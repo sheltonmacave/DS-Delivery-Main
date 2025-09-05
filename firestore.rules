@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // USERS
+    match /users/{uidID} {
+      allow read, write: if request.auth.uid == uidID;
+
+      // HISTORICO
+      match /historico/{historicoid} {
+        allow read: if request.auth.uid == uidID;
+        allow write: if request.auth.uid == uidID;
+      }
+
+      // AVALIACOES
+      match /avaliacoes/{avaliacoesid} {
+        allow read: if request.auth.uid == uidID;
+        allow create: if request.auth.uid == resource.data.remetente;
+        allow update, delete: if false; // Não se edita avaliação
+      }
+    }
+
+    // ORDERS
+    match /orders/{orderid} {
+      allow create: if request.auth != null;
+      allow read, update: if isClient() || isDriver();
+
+      // LOGS
+      match /logs/{logId} {
+        allow read, write: if isClient() || isDriver();
+      }
+    }
+
+    // ADS - público
+    match /ads/{adsid} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // SUPORTE
+    match /suporte/{suporteid} {
+      allow create: if request.auth != null;
+      allow read, update: if request.auth.uid == resource.data.uidID;
+    }
+
+    // Funções auxiliares
+    function isClient() {
+      return request.auth != null &&
+        request.auth.uid == resource.data.clienteid;
+    }
+
+    function isDriver() {
+      return request.auth != null &&
+        request.auth.uid == resource.data.entregadorid;
+    }
+  }
+}

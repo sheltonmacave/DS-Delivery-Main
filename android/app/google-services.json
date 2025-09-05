@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "342509724801",
+    "project_id": "dsdelivery-v1",
+    "storage_bucket": "dsdelivery-v1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:342509724801:android:cab13153ec5ca227e9d980",
+        "android_client_info": {
+          "package_name": "com.example.ds_delivery"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "342509724801-f1l92v8pge5njd91tbqcvjphflgtufcc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBm60xTO4OMfaZx2aT1emWTMKQz9Sn3E-Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "342509724801-31km6mtffj6o4k60mm86fb490lfifjo8.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "342509724801-051agq6qfmae1fu78r6msn3u7ufq3m8i.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.dsDelivery"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

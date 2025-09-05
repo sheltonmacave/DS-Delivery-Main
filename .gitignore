@@ -1,0 +1,65 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# VS Code (opcional: descomenta se quiseres ignorar)
+/.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio build artifacts and intermediates
+/android/app/build/
+/android/app/debug/
+/android/app/profile/
+/android/app/release/
+/android/.gradle/
+/android/.idea/
+/android/local.properties
+
+# Kotlin compiler embeddable and caches
+/android/.cxx/
+/android/.externalNativeBuild/
+
+# Gradle related
+.gradle/
+/build/
+
+# Ignore generated files and caches
+*.apk
+*.aar
+*.jar
+*.keystore
+
+# Ignore Firebase configs if preferir (opcional)
+# /android/app/google-services.json
+# /ios/Runner/GoogleService-Info.plist

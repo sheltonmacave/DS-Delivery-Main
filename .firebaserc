@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "dsdelivery-v1",
+    "main-one": "dsdelivery-v1"
+  },
+  "targets": {},
+  "etags": {}
+}
