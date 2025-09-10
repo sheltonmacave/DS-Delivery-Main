@@ -88,6 +88,12 @@ class Order {
   final OrderStatus status;
   final DateTime createdAt;
   final List<StatusUpdate> statusUpdates;
+  final String? deliveryConfirmationTime;
+  final String? autoCompletionAt;
+  final bool autoCompleted;
+  final bool manuallyConfirmed;
+  final String? clientConfirmationTime;
+  final String? completionTime;
 
   Order({
     this.id,
@@ -107,6 +113,12 @@ class Order {
     required this.status,
     required this.createdAt,
     required this.statusUpdates,
+    this.deliveryConfirmationTime,
+    this.autoCompletionAt,
+    this.autoCompleted = false,
+    this.manuallyConfirmed = false,
+    this.clientConfirmationTime,
+    this.completionTime,
   });
 
   // Método para criar a partir de JSON
@@ -143,6 +155,12 @@ class Order {
       status: OrderStatus.values[json['status'] ?? 0],
       createdAt: _parseTimestamp(json['createdAt']),
       statusUpdates: updates,
+      deliveryConfirmationTime: json['deliveryConfirmationTime']?.toString(),
+      autoCompletionAt: json['autoCompletionAt']?.toString(),
+      autoCompleted: json['autoCompleted'] ?? false,
+      manuallyConfirmed: json['manuallyConfirmed'] ?? false,
+      clientConfirmationTime: json['clientConfirmationTime']?.toString(),
+      completionTime: json['completionTime']?.toString(),
     );
   }
 
@@ -166,6 +184,12 @@ class Order {
       'status': status.index,
       'createdAt': createdAt.toIso8601String(),
       'statusUpdates': statusUpdates.map((update) => update.toJson()).toList(),
+      'deliveryConfirmationTime': deliveryConfirmationTime,
+      'autoCompletionAt': autoCompletionAt,
+      'autoCompleted': autoCompleted,
+      'manuallyConfirmed': manuallyConfirmed,
+      'clientConfirmationTime': clientConfirmationTime,
+      'completionTime': completionTime,
     };
   }
 

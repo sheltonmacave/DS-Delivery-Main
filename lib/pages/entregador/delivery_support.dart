@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/material_symbols_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class DeliverySupportPage extends StatelessWidget {
   final Color highlightColor = const Color(0xFFFF6A00);
@@ -15,7 +16,9 @@ class DeliverySupportPage extends StatelessWidget {
     // Extrair o orderId do mapa de extras
     final String? orderId = extra != null ? extra!['orderId'] as String? : null;
     
-    return Scaffold(
+    return BackHandler(
+    alternativeRoute: '/entregador/delivery_orderstate',
+    child: Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
       body: Column(
         children: [
@@ -28,8 +31,8 @@ class DeliverySupportPage extends StatelessWidget {
                 onPressed: () {
                   // Corrigi a navegação de volta para o estado do pedido
                   if (orderId != null) {
-                    // Usar pushReplacement para garantir que voltemos para a página correta
-                    context.go('/entregador/delivery_orderstate', extra: {'orderId': orderId});
+                    // Corrigido: Passando orderId diretamente como required param
+                    context.go('/entregador/delivery_orderstate/$orderId');
                   } else {
                     // Se não tiver orderId, tenta fazer pop ou volta para a lista de pedidos
                     try {
@@ -67,47 +70,6 @@ class DeliverySupportPage extends StatelessWidget {
                 
                 const SizedBox(height: 32),
                 
-                // Opções de Suporte (adicionado da página de cliente)
-                const Text(
-                  'Opções de Suporte',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _buildSupportOption(
-                  context,
-                  icon: Symbols.message,
-                  title: 'Chat com Suporte',
-                  subtitle: 'Fale diretamente com nossa equipe',
-                  color: Colors.green,
-                  onTap: () {
-                    // Implementar chat de suporte aqui
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Recurso de chat em breve disponível'),
-                      ),
-                    );
-                  },
-                ),
-                _buildSupportOption(
-                  context,
-                  icon: Symbols.help_outline,
-                  title: 'Reportar Problema',
-                  subtitle: 'Informe problemas com entregas',
-                  color: Colors.orange,
-                  onTap: () {
-                    // Implementar reporte de problemas aqui
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Recurso de reportar problema em breve disponível'),
-                      ),
-                    );
-                  },
-                ),
-                
                 const SizedBox(height: 32),
                 
                 const Text(
@@ -140,6 +102,7 @@ class DeliverySupportPage extends StatelessWidget {
           ),
         ],
       ),
+    )
     );
   }
 

@@ -10,6 +10,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:ds_delivery/services/auth_service.dart';
 import 'package:ds_delivery/services/auth_notifier.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ds_delivery/widgets/role_switcher_widget.dart';
+import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class DeliveryProfilePage extends StatefulWidget {
   const DeliveryProfilePage({super.key});
@@ -731,7 +733,9 @@ class _DeliveryProfilePageState extends State<DeliveryProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return BackHandler(
+    alternativeRoute: '/entregador/delivery_home',
+    child: Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F0F0F),
@@ -842,6 +846,7 @@ class _DeliveryProfilePageState extends State<DeliveryProfilePage> {
                 style: const TextStyle(color: Colors.white),
               ),
             ),
+            const RoleSwitcher(currentRole: 'entregador'),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: () {
@@ -917,6 +922,7 @@ class _DeliveryProfilePageState extends State<DeliveryProfilePage> {
           ),
         ),
       ),
+    )
     );
   }
 }

@@ -1,5 +1,6 @@
+import 'package:ds_delivery/widgets/countdown_widget.dart';
 import 'package:flutter/material.dart';
-// Esconde apenas a classe Order do Firestore
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/material_symbols_icons.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -12,6 +13,7 @@ import 'package:intl/intl.dart';
 import '../../models/order_model.dart';
 import '../../services/order_service.dart';
 import '../../services/notifications_service.dart';
+import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class DeliveryOrderStatePage extends StatefulWidget {
   final String orderId;
@@ -25,16 +27,16 @@ class DeliveryOrderStatePage extends StatefulWidget {
 class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
   final Color highlightColor = const Color(0xFFFF6A00);
   final OrderService _orderService = OrderService();
-  
+
   GoogleMapController? _mapController;
   Set<Polyline> _polylines = {};
   Set<Marker> _markers = {};
   bool _isLoadingRoute = true;
   bool _isUpdatingStatus = false;
-  
+
   // API Key para Google Directions
   static const String googleAPIKey = 'AIzaSyCNlTXTSlKc2cCyGbWKqKCIkRN4JMiY1tQ';
-  
+
   // Estilo escuro para o mapa
   static const String _darkMapStyle = '''
   [
@@ -105,61 +107,53 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
   // Método para obter e desenhar a rota
   Future<void> _fetchRouteAndUpdateMap(Order order) async {
     if (_mapController == null) return;
-    
+
     setState(() => _isLoadingRoute = true);
     _markers = {};
     _polylines = {};
-    
+
     // Adicionar marcadores de origem e destino
-    final originLocation = LatLng(
-      order.originLocation.latitude, 
-      order.originLocation.longitude
-    );
-    
-    final destinationLocation = LatLng(
-      order.destinationLocation.latitude,
-      order.destinationLocation.longitude
-    );
-    
-    _markers.add(
-      Marker(
-        markerId: const MarkerId('origin'),
-        position: originLocation,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-        infoWindow: InfoWindow(title: 'Origem', snippet: order.originAddress),
-      )
-    );
-    
-    _markers.add(
-      Marker(
-        markerId: const MarkerId('destination'),
-        position: destinationLocation,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-        infoWindow: InfoWindow(title: 'Destino', snippet: order.destinationAddress),
-      )
-    );
-    
+    final originLocation =
+        LatLng(order.originLocation.latitude, order.originLocation.longitude);
+
+    final destinationLocation = LatLng(order.destinationLocation.latitude,
+        order.destinationLocation.longitude);
+
+    _markers.add(Marker(
+      markerId: const MarkerId('origin'),
+      position: originLocation,
+      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+      infoWindow: InfoWindow(title: 'Origem', snippet: order.originAddress),
+    ));
+
+    _markers.add(Marker(
+      markerId: const MarkerId('destination'),
+      position: destinationLocation,
+      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+      infoWindow:
+          InfoWindow(title: 'Destino', snippet: order.destinationAddress),
+    ));
+
     try {
       final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/directions/json'
-        '?origin=${originLocation.latitude},${originLocation.longitude}'
-        '&destination=${destinationLocation.latitude},${destinationLocation.longitude}'
-        '&key=$googleAPIKey'
-      );
-      
+          'https://maps.googleapis.com/maps/api/directions/json'
+          '?origin=${originLocation.latitude},${originLocation.longitude}'
+          '&destination=${destinationLocation.latitude},${destinationLocation.longitude}'
+          '&key=$googleAPIKey');
+
       final response = await http.get(url);
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        
+
         if (data['status'] == 'OK') {
           final points = data['routes'][0]['overview_polyline']['points'];
           final polylinePoints = PolylinePoints().decodePolyline(points);
-          
+
           final List<LatLng> polylineCoordinates = polylinePoints
               .map((point) => LatLng(point.latitude, point.longitude))
               .toList();
-          
+
           setState(() {
             _polylines.add(
               Polyline(
@@ -171,7 +165,7 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
             );
             _isLoadingRoute = false;
           });
-          
+
           // Ajustar o mapa para mostrar toda a rota
           _fitMapToRoute(polylineCoordinates);
         } else {
@@ -185,7 +179,7 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
       _createStraightLine(originLocation, destinationLocation);
     }
   }
-  
+
   // Criar uma linha reta em caso de falha
   void _createStraightLine(LatLng origin, LatLng destination) {
     setState(() {
@@ -199,28 +193,28 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
       );
       _isLoadingRoute = false;
     });
-    
+
     _fitMapToRoute([origin, destination]);
   }
-  
+
   // Ajustar o mapa para mostrar toda a rota
   Future<void> _fitMapToRoute(List<LatLng> points) async {
     if (points.isEmpty || _mapController == null) return;
-    
+
     double minLat = points.first.latitude;
     double maxLat = points.first.latitude;
     double minLng = points.first.longitude;
     double maxLng = points.first.longitude;
-    
+
     for (var point in points) {
       minLat = minLat < point.latitude ? minLat : point.latitude;
       maxLat = maxLat > point.latitude ? maxLat : point.latitude;
       minLng = minLng < point.longitude ? minLng : point.longitude;
       maxLng = maxLng > point.longitude ? maxLng : point.longitude;
     }
-    
+
     final padding = MediaQuery.of(context).size.width * 0.25;
-    
+
     await _mapController!.animateCamera(
       CameraUpdate.newLatLngBounds(
         LatLngBounds(
@@ -232,21 +226,87 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
     );
   }
 
+  void _showCancelConfirmation(Order order) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.black.withOpacity(0.85),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: Colors.red, width: 1),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Symbols.cancel,
+                color: Colors.red,
+                size: 48,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Cancelar Entrega',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Tens certeza que queres cancelar esta entrega? Esta ação não pode ser desfeita.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text(
+                      'Não, voltar',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  FilledButton(
+                    onPressed: _isUpdatingStatus
+                        ? null
+                        : () async {
+                            Navigator.pop(context);
+                            await _cancelOrder(order);
+                          },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Sim, cancelar'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // Atualizar status do pedido
   Future<void> _updateOrderStatus(Order order, OrderStatus newStatus) async {
     try {
       setState(() => _isUpdatingStatus = true);
-      
+
       await _orderService.updateOrderStatus(order.id!, newStatus);
-      
+
       // Enviar notificação ao cliente
       final statusDesc = _getStatusDescription(newStatus);
-      await _orderService.notifyClient(
-        order.id!,
-        'Atualização do Pedido',
-        'O status do seu pedido foi atualizado para: $statusDesc'
-      );
-      
+      await _orderService.notifyClient(order.id!, 'Atualização do Pedido',
+          'O status do seu pedido foi atualizado para: $statusDesc');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -254,7 +314,7 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
             backgroundColor: Colors.green,
           ),
         );
-        
+
         // Notificação para o entregador também
         showLocalNotification(
           title: 'Pedido Atualizado',
@@ -266,6 +326,50 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro ao atualizar status: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUpdatingStatus = false);
+      }
+    }
+  }
+
+  Future<void> _cancelOrder(Order order) async {
+    if (_isUpdatingStatus) return;
+
+    setState(() => _isUpdatingStatus = true);
+
+    try {
+      await _orderService.updateOrderStatus(
+        order.id!,
+        OrderStatus.cancelled,
+      );
+
+      // Notificar cliente
+      await _orderService.notifyClient(
+        order.id!,
+        'Entrega Cancelada',
+        'A sua entrega foi cancelada pelo entregador.',
+      );
+
+      // Notificação local para o entregador
+      showLocalNotification(
+        title: 'Entrega Cancelada',
+        body: 'A entrega foi cancelada com sucesso.',
+      );
+
+      // Voltar para lista de pedidos
+      if (mounted) {
+        context.go('/entregador/delivery_orderslist');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao cancelar pedido: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -311,104 +415,162 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.6),
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Symbols.arrow_back_ios, color: Colors.white),
-          onPressed: () => context.go('/entregador/delivery_orderslist'),
-        ),
-        title: const Text(
-          'Estado do Pedido',
-          style: TextStyle(
-            fontFamily: 'SpaceGrotesk',
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
+    return BackHandler(
+        alternativeRoute: '/entregador/delivery_home',
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0F0F0F),
+          appBar: AppBar(
+            backgroundColor: Colors.black.withOpacity(0.6),
+            elevation: 0,
+            centerTitle: true,
+            leading: IconButton(
+              icon: const Icon(Symbols.arrow_back_ios, color: Colors.white),
+              onPressed: () => context.go('/entregador/delivery_orderslist'),
+            ),
+            title: const Text(
+              'Estado do Pedido',
+              style: TextStyle(
+                fontFamily: 'SpaceGrotesk',
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            actions: [
+              IconButton(
+                icon:
+                    const Icon(Symbols.support_agent, color: Color(0xFFFF6A00)),
+                onPressed: () => context.go('/entregador/delivery_support',
+                    extra: {'orderId': widget.orderId}),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Symbols.help_outline, color: Colors.white),
-            onPressed: () => context.go('/entregador/delivery_support', extra: {'orderId': widget.orderId}),
-          ),
-        ],
-      ),
-      body: StreamBuilder<Order?>(
-        stream: _orderService.getOrderById(widget.orderId),
-        builder: (context, snapshot) {
-          // Estados de carregamento e erro
-          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
-          
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Symbols.error_outline, color: Colors.red, size: 64),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Erro ao carregar dados do pedido',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+          body: widget.orderId.isEmpty
+            ? _buildEmptyOrderIdError()
+            : StreamBuilder<Order?>(
+                stream: _orderService.getOrderById(widget.orderId),
+                builder: (context, snapshot) {
+                  // Estados de carregamento e erro
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      !snapshot.hasData) {
+                    return const Center(
+                      child: CircularProgressIndicator(),
+                    );
+                  }
+
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Symbols.error_outline,
+                                color: Colors.red, size: 64),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Erro ao carregar dados do pedido',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Verifique sua conexão ou tente novamente mais tarde.\n${snapshot.error}',
+                              style: TextStyle(color: Colors.grey.shade400),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 24),
+                            FilledButton.icon(
+                              onPressed: () {
+                                setState(() {}); // Forçar reconstrução
+                              },
+                              icon: const Icon(Symbols.refresh),
+                              label: const Text('Tentar Novamente'),
+                            ),
+                          ],
+                        ),
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Verifique sua conexão ou tente novamente mais tarde.\n${snapshot.error}',
-                      style: TextStyle(color: Colors.grey.shade400),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    FilledButton.icon(
-                      onPressed: () {
-                        setState(() {}); // Forçar reconstrução
-                      },
-                      icon: const Icon(Symbols.refresh),
-                      label: const Text('Tentar Novamente'),
-                    ),
-                  ],
-                ),
+                    );
+                  }
+
+                  final order = snapshot.data;
+                  if (order == null) {
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Symbols.not_listed_location,
+                              color: Colors.amber, size: 64),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Pedido não encontrado',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 24),
+                          FilledButton(
+                            onPressed: () =>
+                                context.go('/entregador/delivery_orderslist'),
+                            child: const Text('Voltar para Pedidos'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  // Se temos os dados do pedido, renderizar a interface
+                  return _buildOrderDetails(order);
+                },
               ),
-            );
-          }
-          
-          final order = snapshot.data;
-          if (order == null) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Symbols.not_listed_location, color: Colors.amber, size: 64),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Pedido não encontrado',
-                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed: () => context.go('/entregador/delivery_orderslist'),
-                    child: const Text('Voltar para Pedidos'),
-                  ),
-                ],
+        ));
+  }
+
+  // Novo método para mostrar erro quando ID do pedido está vazio
+  Widget _buildEmptyOrderIdError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Symbols.error_outline,
+              color: Colors.red,
+              size: 64,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'ID do pedido inválido',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
               ),
-            );
-          }
-          
-          // Se temos os dados do pedido, renderizar a interface
-          return _buildOrderDetails(order);
-        },
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Não foi possível carregar os detalhes do pedido porque o ID está vazio.',
+              style: TextStyle(color: Colors.white70, fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            FilledButton.icon(
+              onPressed: () => context.go('/entregador/delivery_orderslist'),
+              icon: const Icon(Symbols.view_list),
+              label: const Text('Voltar para a lista de pedidos'),
+              style: FilledButton.styleFrom(
+                backgroundColor: highlightColor,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -421,24 +583,24 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
         children: [
           // Status atual do pedido
           _buildStatusCard(order),
-          
+
           const SizedBox(height: 16),
-          
+
           // Informações do cliente
           _buildClientInfoCard(order),
-          
+
           const SizedBox(height: 16),
-          
+
           // Mapa com a rota
           _buildMapCard(order),
-          
+
           const SizedBox(height: 16),
-          
+
           // Detalhes do pedido
           _buildOrderDetailsCard(order),
-          
+
           const SizedBox(height: 24),
-          
+
           // Ações disponíveis baseadas no status atual
           _buildActionButtons(order),
         ],
@@ -449,15 +611,80 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
   Widget _buildStatusCard(Order order) {
     final statusText = _getStatusText(order.status);
     final statusColor = _getStatusColor(order.status);
-    
+
     // Formatador de data com suporte a diferentes locales
-    final formattedDate = DateFormat('dd/MM/yyyy HH:mm')
-        .format(order.createdAt);
-    
+    final formattedDate =
+        DateFormat('dd/MM/yyyy HH:mm').format(order.createdAt);
+
     // Data atual formatada para exibição
-    final currentDate = DateFormat('dd/MM/yyyy HH:mm')
-        .format(DateTime.now());
-    
+    final currentDate = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+
+    List<Widget> statusCardChildren = [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Pedido #${order.id!.substring(0, 4)}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              statusText,
+              style: TextStyle(
+                color: statusColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          const Icon(Symbols.calendar_month,
+              color: Colors.white70, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            'Criado em $formattedDate',
+            style: const TextStyle(color: Colors.white70),
+          ),
+        ],
+      ),
+      const SizedBox(height: 4),
+      Row(
+        children: [
+          Icon(Symbols.update, color: highlightColor, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            'Hora atual: $currentDate',
+            style: TextStyle(color: highlightColor, fontSize: 13),
+          ),
+        ],
+      ),
+      const SizedBox(height: 24),
+      _buildOrderProgress(order.status),
+    ];
+
+    if (order.status == OrderStatus.delivered) {
+      // Check if order has auto-completion time
+      if (order.autoCompletionAt != null) {
+        final autoCompletionTime = DateTime.parse(order.autoCompletionAt!);
+        statusCardChildren.add(const SizedBox(height: 12));
+        statusCardChildren.add(OrderCountdownWidget(
+          targetTime: autoCompletionTime,
+        ));
+      }
+    }
+
     return Card(
       color: const Color(0xFF1A1A1A),
       shape: RoundedRectangleBorder(
@@ -467,71 +694,16 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Pedido #${order.id!.substring(0, 4)}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    statusText,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Symbols.calendar_month, color: Colors.white70, size: 16),
-                const SizedBox(width: 8),
-                Text(
-                  'Criado em $formattedDate',
-                  style: const TextStyle(color: Colors.white70),
-                ),
-              ],
-            ),
-            
-            // Hora atual (para referência do entregador)
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Symbols.update, color: highlightColor, size: 16),
-                const SizedBox(width: 8),
-                Text(
-                  'Hora atual: $currentDate',
-                  style: TextStyle(color: highlightColor, fontSize: 13),
-                ),
-              ],
-            ),
-            
-            // Progresso visual do pedido
-            const SizedBox(height: 24),
-            _buildOrderProgress(order.status),
-          ],
+          children: statusCardChildren,
         ),
       ),
     );
   }
 
   Widget _buildOrderProgress(OrderStatus status) {
-    final int currentStep = status.index - 1; // -1 porque começamos em "Aguardando" (index 1)
-    
+    final int currentStep =
+        status.index - 1; // -1 porque começamos em "Aguardando" (index 1)
+
     return Row(
       children: [
         _buildProgressStep(0, currentStep >= 0, "Atribuído"),
@@ -544,7 +716,7 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
       ],
     );
   }
-  
+
   Widget _buildProgressStep(int step, bool isActive, String label) {
     return Expanded(
       child: Column(
@@ -577,7 +749,7 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
       ),
     );
   }
-  
+
   Widget _buildProgressLine(bool isActive) {
     return Expanded(
       child: Container(
@@ -612,48 +784,103 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
             ),
             const Divider(color: Colors.white24),
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        order.clientName ?? 'Cliente',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      if (order.clientPhone != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          order.clientPhone!,
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (order.clientPhone != null)
-                  FilledButton.icon(
-                    onPressed: () => _contactClient(order.clientPhone!),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: highlightColor,
+            
+            // Client info with photo and details
+            FutureBuilder<firestore.DocumentSnapshot>(
+              future: firestore.FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(order.clientId)
+                  .get(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: CircularProgressIndicator(),
                     ),
-                    icon: const Icon(Symbols.call, size: 16),
-                    label: const Text('Ligar'),
-                  ),
-              ],
+                  );
+                }
+                
+                // Get client data or use defaults
+                final clientData = snapshot.data?.data() as Map<String, dynamic>?;
+                final clientName = order.clientName ?? clientData?['name'] ?? 'Cliente';
+                final clientPhone = order.clientPhone ?? clientData?['phone'] ?? '';
+                final clientPhoto = clientData?['photoURL'];
+                
+                // Client rating (placeholder or actual value if available)
+                final clientRating = clientData?['rating'] ?? 5.0;
+                
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Client photo/avatar
+                    CircleAvatar(
+                      radius: 30,
+                      backgroundImage: clientPhoto != null 
+                          ? NetworkImage(clientPhoto)
+                          : null,
+                      backgroundColor: Colors.grey.shade800,
+                      child: clientPhoto == null 
+                          ? const Icon(Symbols.person, color: Colors.white54, size: 30) 
+                          : null,
+                    ),
+                    const SizedBox(width: 16),
+                    
+                    // Client details
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            clientName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          if (clientPhone.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              clientPhone,
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                          ],
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Symbols.star, color: Colors.amber, size: 14),
+                              const SizedBox(width: 4),
+                              Text(
+                                clientRating.toStringAsFixed(1),
+                                style: const TextStyle(color: Colors.white70, fontSize: 14),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // Call button
+                    if (clientPhone.isNotEmpty)
+                      FilledButton.icon(
+                        onPressed: () => _contactClient(clientPhone),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: highlightColor,
+                        ),
+                        icon: const Icon(Symbols.call, size: 16),
+                        label: const Text('Ligar'),
+                      ),
+                  ],
+                );
+              },
             ),
           ],
         ),
       ),
     );
   }
-
+  
   Widget _buildMapCard(Order order) {
     return Card(
       color: const Color(0xFF1A1A1A),
@@ -685,7 +912,7 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
                   Symbols.location_on,
                   'Origem:',
                   order.originAddress,
-                  Colors.orange,
+                  const Color(0xFFFF6A00),
                 ),
                 const SizedBox(height: 12),
                 _buildAddressRow(
@@ -698,7 +925,8 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
             ),
           ),
           ClipRRect(
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+            borderRadius:
+                const BorderRadius.vertical(bottom: Radius.circular(16)),
             child: SizedBox(
               height: 200,
               child: Stack(
@@ -740,7 +968,8 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
     );
   }
 
-  Widget _buildAddressRow(IconData icon, String label, String address, Color iconColor) {
+  Widget _buildAddressRow(
+      IconData icon, String label, String address, Color iconColor) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -790,17 +1019,20 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
             ),
             const Divider(color: Colors.white24),
             const SizedBox(height: 8),
-            
             _buildDetailRow('Transporte', order.transportType),
-            _buildDetailRow('Distância', '${order.distance.toStringAsFixed(1)} km'),
+            _buildDetailRow(
+                'Distância', '${order.distance.toStringAsFixed(1)} km'),
             _buildDetailRow('Tempo Estimado', order.estimatedTime),
             _buildDetailRow('Valor', '${order.price.toStringAsFixed(0)} MT'),
-            
-            if (order.observations != null && order.observations!.isNotEmpty) ...[
+            if (order.observations != null &&
+                order.observations!.isNotEmpty) ...[
               const SizedBox(height: 16),
               const Text(
                 'Observações:',
-                style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
               Container(
@@ -834,7 +1066,8 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
           ),
           Text(
             value,
-            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+                color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -844,26 +1077,36 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
   Widget _buildActionButtons(Order order) {
     // Determinar as ações baseadas no status atual do pedido
     Widget actionButton;
-    
+
     switch (order.status) {
       case OrderStatus.driverAssigned:
-        actionButton = _buildActionButton(
-          'Confirmar Coleta',
-          Symbols.inventory_2,
-          Colors.orange,
-          () => _updateOrderStatus(order, OrderStatus.pickedUp),
+        return Column(
+          children: [
+            _buildActionButton(
+              'Confirmar Coleta',
+              Symbols.inventory_2,
+              const Color(0xFFFF6A00),
+              () => _updateOrderStatus(order, OrderStatus.pickedUp),
+            ),
+            const SizedBox(height: 16),
+            _buildCancelButton(order),
+          ],
         );
-        break;
-        
+
       case OrderStatus.pickedUp:
-        actionButton = _buildActionButton(
-          'Iniciar Entrega',
-          Symbols.local_shipping,
-          Colors.green,
-          () => _updateOrderStatus(order, OrderStatus.inTransit),
+        return Column(
+          children: [
+            _buildActionButton(
+              'Iniciar Entrega',
+              Symbols.local_shipping,
+              Colors.green,
+              () => _updateOrderStatus(order, OrderStatus.inTransit),
+            ),
+            const SizedBox(height: 16),
+            _buildCancelButton(order),
+          ],
         );
-        break;
-        
+
       case OrderStatus.inTransit:
         actionButton = _buildActionButton(
           'Confirmar Entrega',
@@ -872,7 +1115,7 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
           () => _updateOrderStatus(order, OrderStatus.delivered),
         );
         break;
-        
+
       case OrderStatus.delivered:
         actionButton = _buildActionButton(
           'Pedido Concluído',
@@ -882,7 +1125,7 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
           isDisabled: true,
         );
         break;
-        
+
       case OrderStatus.cancelled:
         actionButton = _buildActionButton(
           'Pedido Cancelado',
@@ -892,7 +1135,7 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
           isDisabled: true,
         );
         break;
-        
+
       default:
         actionButton = _buildActionButton(
           'Status Desconhecido',
@@ -902,23 +1145,11 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
           isDisabled: true,
         );
     }
-    
+
     return Column(
       children: [
         actionButton,
         const SizedBox(height: 16),
-        if (order.status != OrderStatus.delivered && order.status != OrderStatus.cancelled)
-          OutlinedButton.icon(
-            onPressed: _isUpdatingStatus ? null : () => _showCancelDialog(order),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.red,
-              side: const BorderSide(color: Colors.red),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            icon: const Icon(Symbols.warning),
-            label: const Text('Reportar Problema'),
-          ),
       ],
     );
   }
@@ -938,7 +1169,7 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
           backgroundColor: color,
           disabledBackgroundColor: color.withOpacity(0.3),
           padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
         icon: _isUpdatingStatus
             ? const SizedBox(
@@ -958,33 +1189,22 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
     );
   }
 
-  void _showCancelDialog(Order order) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
-          'Reportar Problema',
-          style: TextStyle(color: Colors.white),
+  Widget _buildCancelButton(Order order) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _isUpdatingStatus ? null : () => _showCancelConfirmation(order),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.red,
+          side: const BorderSide(color: Colors.red),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
-        content: const Text(
-          'Tem certeza que deseja reportar um problema com este pedido? Um agente de suporte entrará em contato.',
-          style: TextStyle(color: Colors.white70),
+        icon: const Icon(Symbols.cancel, color: Colors.red),
+        label: const Text(
+          'Cancelar Entrega',
+          style: TextStyle(color: Colors.red, fontSize: 16),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.go('/entregador/delivery_support', extra: {'orderId': order.id});
-            },
-            style: FilledButton.styleFrom(backgroundColor: highlightColor),
-            child: const Text('Continuar'),
-          ),
-        ],
       ),
     );
   }
@@ -1003,8 +1223,8 @@ class _DeliveryOrderStatePageState extends State<DeliveryOrderStatePage> {
   Color _getStatusColor(OrderStatus status) {
     return switch (status) {
       OrderStatus.pending => Colors.grey,
-      OrderStatus.driverAssigned => Colors.orange,
-      OrderStatus.pickedUp => Colors.green,
+      OrderStatus.driverAssigned => highlightColor,
+      OrderStatus.pickedUp => highlightColor,
       OrderStatus.inTransit => highlightColor,
       OrderStatus.delivered => Colors.green,
       OrderStatus.cancelled => Colors.red

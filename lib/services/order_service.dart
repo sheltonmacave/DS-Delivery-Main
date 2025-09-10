@@ -86,62 +86,6 @@ class OrderService {
     }
   }
   
-  // Busca pedidos ativos do cliente de forma robusta
-  Future<List<Order>> getClientActiveOrdersOnce(String userId) async {
-    try {
-      if (userId.isEmpty) return [];
-      
-      final snapshot = await _firestore
-          .collection('orders')
-          .where('clientId', isEqualTo: userId)
-          .where('status', whereNotIn: [
-            OrderStatus.delivered.index,
-            OrderStatus.cancelled.index
-          ])
-          .limit(1) // Limitamos a 1 para performance
-          .get();
-      
-      if (snapshot.docs.isEmpty) return [];
-      
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
-        return Order.fromJson({...data, 'id': doc.id});
-      }).toList();
-    } catch (e) {
-      print('Erro ao buscar pedidos ativos do cliente: $e');
-      // Retornar lista vazia em vez de propagar erro
-      return [];
-    }
-  }
-
-  // Busca entregas ativas do entregador com melhor tratamento de erro
-  Future<List<Order>> getDriverActiveOrdersOnce(String driverId) async {
-    try {
-      if (driverId.isEmpty) return [];
-      
-      final snapshot = await _firestore
-          .collection('orders')
-          .where('driverId', isEqualTo: driverId)
-          .where('status', whereNotIn: [
-            OrderStatus.delivered.index,
-            OrderStatus.cancelled.index
-          ])
-          .limit(1) // Limitamos a 1 para performance
-          .get();
-      
-      if (snapshot.docs.isEmpty) return [];
-      
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
-        return Order.fromJson({...data, 'id': doc.id});
-      }).toList();
-    } catch (e) {
-      print('Erro ao buscar entregas ativas do entregador: $e');
-      // Retornar lista vazia em vez de propagar erro
-      return [];
-    }
-  }
-
   // Listar pedidos do cliente atual
   Stream<List<Order>> getClientOrders() {
     final userId = _auth.currentUser?.uid;
@@ -264,6 +208,12 @@ class OrderService {
       
       final orderData = orderDoc.data()!;
       final status = orderData['status'] as int;
+      final clientId = orderData['clientId'] as String;
+      
+      // Verificar se o entregador é o mesmo que criou o pedido
+      if (currentUser.uid == clientId) {
+        throw Exception('Não é possível aceitar o seu próprio pedido');
+      }
       
       // Verificar se o pedido já foi aceito
       if (status != OrderStatus.pending.index) {
@@ -274,8 +224,14 @@ class OrderService {
       await _firestore.runTransaction((transaction) async {
         // Verificar novamente dentro da transação
         final freshOrder = await transaction.get(_firestore.collection('orders').doc(orderId));
+        
         if (freshOrder.data()?['status'] != OrderStatus.pending.index) {
           throw Exception('Este pedido já foi aceito por outro entregador');
+        }
+        
+        // Verificar novamente se o entregador é o mesmo que criou o pedido
+        if (freshOrder.data()?['clientId'] == currentUser.uid) {
+          throw Exception('Não é possível aceitar o seu próprio pedido');
         }
         
         // Atualizar pedido com o ID do entregador
@@ -302,19 +258,21 @@ class OrderService {
   // Método para atualizar o status de um pedido
   Future<void> updateOrderStatus(String orderId, OrderStatus newStatus) async {
     try {
-      final statusUpdate = StatusUpdate(
-        status: newStatus,
-        timestamp: DateTime.now(),
-        description: 'Status atualizado para ${_getStatusDescription(newStatus)}',
-      );
+      // Create a status update
+      final statusUpdate = {
+        'status': newStatus.index,
+        'timestamp': DateTime.now().toIso8601String(),
+        'description': _getStatusDescription(newStatus)
+      };
 
+      // Update using arrayUnion for atomic operation
       await _firestore.collection('orders').doc(orderId).update({
         'status': newStatus.index,
-        'statusUpdates': FieldValue.arrayUnion([statusUpdate.toJson()]),
+        'statusUpdates': FieldValue.arrayUnion([statusUpdate]),
       });
     } catch (e) {
-      print('Erro ao atualizar status: $e');
-      throw Exception('Não foi possível atualizar o status do pedido: $e');
+      print('Error updating order status: $e');
+      throw Exception('Falha ao atualizar status: Verifique sua conexão');
     }
   }
 
@@ -340,22 +298,57 @@ class OrderService {
   // Confirmar entrega de um pedido
   Future<void> confirmDelivery(String orderId) async {
     try {
-      final statusUpdate = StatusUpdate(
-        status: OrderStatus.delivered,
-        timestamp: DateTime.now(),
-        description: 'Cliente confirmou a entrega',
-      );
+      // Get current order
+      final currentOrder = await getOrderByIdOnce(orderId);
+      if (currentOrder == null) {
+        throw Exception('Order not found');
+      }
 
+      // Add manual confirmation status update
+      final updatedStatusUpdates = [...currentOrder.statusUpdates];
+      
+      // Update the order with completion info
       await _firestore.collection('orders').doc(orderId).update({
-        'status': OrderStatus.delivered.index,
-        'statusUpdates': FieldValue.arrayUnion([statusUpdate.toJson()]),
+        'manuallyConfirmed': true,
+        'clientConfirmationTime': FieldValue.serverTimestamp(),
       });
+      
+      // Notify driver
+      if (currentOrder.driverId != null) {
+        await notifyDriver(
+          currentOrder.driverId!,
+          'Entrega confirmada',
+          'O cliente confirmou o recebimento do pedido #${orderId.substring(0, 4)}',
+        );
+      }
+      
     } catch (e) {
-      print('Erro ao confirmar entrega: $e');
-      throw Exception('Não foi possível confirmar a entrega');
+      print('Error confirming delivery: $e');
+      rethrow;
     }
   }
   
+  // Método para notificar o entregador sobre o status da entrega
+  Future<void> notifyDriver(String driverId, String title, String message) async {
+    try {
+      // Aqui você pode implementar o envio de notificação para o entregador
+      // usando FCM ou armazenando a notificação no Firestore
+
+      await _firestore.collection('notifications').add({
+        'userId': driverId,
+        'title': title,
+        'body': message,
+        'read': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // Se você tem FCM implementado, pode enviar uma notificação push aqui
+    } catch (e) {
+      print('Erro ao notificar entregador: $e');
+      rethrow;
+    }
+  }
+
   // Método auxiliar para obter descrição de status
   String _getStatusDescription(OrderStatus status) {
     switch (status) {

@@ -9,6 +9,10 @@ import 'package:ds_delivery/services/firestore_service.dart';
 import 'package:ds_delivery/services/storage_service.dart';
 import 'package:ds_delivery/services/user_role_storage.dart';
 import 'package:ds_delivery/services/auth_notifier.dart';
+import 'package:ds_delivery/services/auth_role_verification.dart';
+import 'package:ds_delivery/wrappers/back_handler.dart';
+import 'package:ds_delivery/utils/network_utils.dart';
+// Ensure that the file 'lib/wrappers/back_handler.dart' exists and exports 'BackHandler'.
 
 void main() {
   runApp(const MyApp());
@@ -32,13 +36,14 @@ class ClientAuthPage extends StatefulWidget {
   State<ClientAuthPage> createState() => _ClientAuthPageState();
 }
 
-class _ClientAuthPageState extends State<ClientAuthPage> with SingleTickerProviderStateMixin {
+class _ClientAuthPageState extends State<ClientAuthPage>
+    with SingleTickerProviderStateMixin {
   final AuthService _authService = AuthService();
   final FirestoreService _firestoreService = FirestoreService();
   final highlightColor = const Color(0xFFFF6A00);
   late TabController _tabController;
   bool isLoginTab = false;
-  
+
   bool _isRegistering = false;
   bool _isLoggingIn = false;
 
@@ -53,7 +58,8 @@ class _ClientAuthPageState extends State<ClientAuthPage> with SingleTickerProvid
 
   // Controladores de texto para registro
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _emailRegisterController = TextEditingController();
+  final TextEditingController _emailRegisterController =
+      TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordRegisterController =
       TextEditingController();
@@ -80,7 +86,7 @@ class _ClientAuthPageState extends State<ClientAuthPage> with SingleTickerProvid
 
   void _registerClient() async {
     if (_isRegistering) return;
-    
+
     if (_passwordRegisterController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("As senhas não coincidem")),
@@ -93,7 +99,8 @@ class _ClientAuthPageState extends State<ClientAuthPage> with SingleTickerProvid
     });
 
     try {
-      print('Tentando registrar usuário com email: ${_emailRegisterController.text.trim()}');
+      print(
+          'Tentando registrar usuário com email: ${_emailRegisterController.text.trim()}');
 
       final user = await _authService.registerWithEmailAndPassword(
         _emailRegisterController.text.trim(),
@@ -157,7 +164,7 @@ class _ClientAuthPageState extends State<ClientAuthPage> with SingleTickerProvid
 
   void _loginClient() async {
     if (_isLoggingIn) return;
-    
+
     setState(() {
       _isLoggingIn = true;
     });
@@ -167,16 +174,10 @@ class _ClientAuthPageState extends State<ClientAuthPage> with SingleTickerProvid
         _emailLoginController.text.trim(),
         _passwordLoginController.text.trim(),
       );
+
       if (user != null) {
-        await saveUserRole('cliente');
-        authNotifier.notify();
-        context.go('/cliente/client_home');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Login realizado com sucesso!")),
-          );
-          context.go('/cliente/client_home');
-        }
+        // Verifica se o usuário tem os dados necessários para a função de cliente
+        await RoleVerificationService().verifyRoleAccess(context, 'cliente');
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -214,182 +215,171 @@ class _ClientAuthPageState extends State<ClientAuthPage> with SingleTickerProvid
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F0F),
-        leading: IconButton(
-          icon: const Icon(Symbols.arrow_back, color: Colors.white),
-          onPressed: () => context.go('/account_selection'),
-        ),
-        title: const Text(
-          'DS Delivery',
-          style: TextStyle(
-            color: Color(0xFFFF6A00),
-            fontFamily: 'SpaceGrotesk',
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        centerTitle: true,
-        elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Container(
-            decoration: const BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                    color: Color(0xFF0F0F0F), width: 0.5),
+    return BackHandler(
+        alternativeRoute: '/account_selection',
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0F0F0F),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF0F0F0F),
+            leading: IconButton(
+              icon: const Icon(Symbols.arrow_back, color: Colors.white),
+              onPressed: () => context.go('/account_selection'),
+            ),
+            title: const Text(
+              'DS Delivery',
+              style: TextStyle(
+                color: Color(0xFFFF6A00),
+                fontFamily: 'SpaceGrotesk',
+                fontWeight: FontWeight.w700,
               ),
             ),
-            child: TabBar(
-              controller: _tabController,
-              onTap: (index) {
-                setState(() {
-                  isLoginTab = index == 1;
-                });
-              },
-              labelColor: highlightColor,
-              unselectedLabelColor: Colors.white54,
-              indicatorColor: highlightColor,
-              tabs: const [
-                Tab(text: 'Registrar'),
-                Tab(text: 'Login'),
-              ],
-            ),
-          ),
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          children: [
-            Image.asset(
-              isLoginTab ? 'assets/images/login.png' : 'assets/images/cliente.png',
-              height: 120,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              isLoginTab ? 'Login como Cliente' : 'Registro como Cliente',
-              style: const TextStyle(
-                fontSize: 20,
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _RegisterSection(
-                    nameController: _nameController,
-                    emailController: _emailRegisterController,
-                    phoneController: _phoneController,
-                    passwordController: _passwordRegisterController,
-                    confirmPasswordController: _confirmPasswordController,
-                    onImageUploaded: (file) {
-                      setState(() {
-                        _selectedImageFile = file; // guarda a XFile selecionada
-                      });
-                    },
-                  ),
-                  _LoginSection(
-                    emailController: _emailLoginController,
-                    passwordController: _passwordLoginController,
-                    authService: _authService,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(left: 24, right: 24, bottom: 6, top: 6),
-          child: FilledButton(
-            onPressed: (_isRegistering || _isLoggingIn) ? null : () {
-              if (isLoginTab) {
-                _loginClient();
-              } else {
-                _registerClient();
-              }
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: (_isRegistering || _isLoggingIn) ? Colors.grey : highlightColor,
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _isRegistering ? 'Registrando...' : 
-                  _isLoggingIn ? 'Entrando...' :
-                  isLoginTab ? 'Login' : 'Registrar',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
+            centerTitle: true,
+            elevation: 0,
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(48),
+              child: Container(
+                decoration: const BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: Color(0xFF0F0F0F), width: 0.5),
                   ),
                 ),
-                (_isRegistering || _isLoggingIn) 
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                child: TabBar(
+                  controller: _tabController,
+                  onTap: (index) {
+                    setState(() {
+                      isLoginTab = index == 1;
+                    });
+                  },
+                  labelColor: highlightColor,
+                  unselectedLabelColor: Colors.white54,
+                  indicatorColor: highlightColor,
+                  tabs: const [
+                    Tab(text: 'Registrar'),
+                    Tab(text: 'Login'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              children: [
+                Image.asset(
+                  isLoginTab
+                      ? 'assets/images/login.png'
+                      : 'assets/images/cliente.png',
+                  height: 120,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  isLoginTab ? 'Login como Cliente' : 'Registro como Cliente',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _RegisterSection(
+                        nameController: _nameController,
+                        emailController: _emailRegisterController,
+                        phoneController: _phoneController,
+                        passwordController: _passwordRegisterController,
+                        confirmPasswordController: _confirmPasswordController,
+                        onImageUploaded: (file) {
+                          setState(() {
+                            _selectedImageFile =
+                                file; // guarda a XFile selecionada
+                          });
+                        },
                       ),
-                    )
-                  : const Icon(
-                      Symbols.check,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+                      _LoginSection(
+                        emailController: _emailLoginController,
+                        passwordController: _passwordLoginController,
+                        authService: _authService,
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  void _loginWithGoogle() async {
-    try {
-      final user = await _authService.signInWithGoogle();
-      if (user != null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Login com Google realizado com sucesso!")),
-          );
-          context.go('/cliente/client_home');
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Erro ao fazer login com Google")),
-          );
-        }
-      }
-    } catch (e) {
-      print('Erro durante o login com Google: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erro: $e")),
-        );
-      }
-    }
+          bottomNavigationBar: SafeArea(
+            child: Padding(
+              padding:
+                  const EdgeInsets.only(left: 24, right: 24, bottom: 6, top: 6),
+              child: FilledButton(
+                onPressed: (_isRegistering || _isLoggingIn)
+                    ? null
+                    : () {
+                        if (isLoginTab) {
+                          _loginClient();
+                        } else {
+                          _registerClient();
+                        }
+                      },
+                style: FilledButton.styleFrom(
+                  backgroundColor: (_isRegistering || _isLoggingIn)
+                      ? Colors.grey
+                      : highlightColor,
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _isRegistering
+                          ? 'Registrando...'
+                          : _isLoggingIn
+                              ? 'Entrando...'
+                              : isLoginTab
+                                  ? 'Login'
+                                  : 'Registrar',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                      ),
+                    ),
+                    (_isRegistering || _isLoggingIn)
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : const Icon(
+                            Symbols.check,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ));
   }
 
   void _uploadImageInBackground(String userId) async {
     if (_selectedImageFile == null) return;
-    
+
     try {
       print('Fazendo upload da imagem em background...');
-      final imageUrl = await StorageService().uploadProfileImage(_selectedImageFile!, userId);
-      
+      final imageUrl = await StorageService()
+          .uploadProfileImage(_selectedImageFile!, userId);
+
       if (imageUrl != null) {
         // Atualiza o Firestore com a URL da imagem
         await _firestoreService.updateUserField(userId, 'photoURL', imageUrl);
@@ -481,7 +471,8 @@ class _ImageInsertionButtonState extends State<_ImageInsertionButton> {
 
   Future<void> _pickAndCropImage() async {
     try {
-      final XFile? pickedImage = await _picker.pickImage(source: ImageSource.gallery);
+      final XFile? pickedImage =
+          await _picker.pickImage(source: ImageSource.gallery);
       if (pickedImage != null) {
         final CroppedFile? croppedFile = await ImageCropper().cropImage(
           sourcePath: pickedImage.path,
@@ -532,14 +523,16 @@ class _ImageInsertionButtonState extends State<_ImageInsertionButton> {
         OutlinedButton.icon(
           onPressed: _pickAndCropImage,
           icon: const Icon(Symbols.add_photo_alternate, color: Colors.white),
-          label: const Text('Inserir Imagem', style: TextStyle(color: Colors.white)),
+          label: const Text('Inserir Imagem',
+              style: TextStyle(color: Colors.white)),
         ),
         if (_image != null)
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.file(File(_image!.path), height: 160, fit: BoxFit.cover),
+              child: Image.file(File(_image!.path),
+                  height: 160, fit: BoxFit.cover),
             ),
           ),
       ],
@@ -595,7 +588,8 @@ class _LoginSectionState extends State<_LoginSection> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Email de recuperação enviado! Verifique sua caixa de entrada'),
+            content: Text(
+                'Email de recuperação enviado! Verifique sua caixa de entrada'),
             backgroundColor: Colors.green,
           ),
         );
@@ -679,8 +673,8 @@ class _LoginSectionState extends State<_LoginSection> {
                   cursorColor: highlightColor,
                   decoration: InputDecoration(
                     labelText: 'Seu email',
-                    labelStyle: TextStyle(color: Colors.white70),
-                    prefixIcon: Icon(Symbols.mail, color: Colors.white54),
+                    labelStyle: const TextStyle(color: Colors.white70),
+                    prefixIcon: const Icon(Symbols.mail, color: Colors.white54),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: const BorderSide(color: Colors.white30),
@@ -698,7 +692,9 @@ class _LoginSectionState extends State<_LoginSection> {
                       child: FilledButton(
                         onPressed: _isResettingPassword ? null : _resetPassword,
                         style: FilledButton.styleFrom(
-                          backgroundColor: _isResettingPassword ? Colors.grey : highlightColor,
+                          backgroundColor: _isResettingPassword
+                              ? Colors.grey
+                              : highlightColor,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                         child: _isResettingPassword
@@ -707,7 +703,8 @@ class _LoginSectionState extends State<_LoginSection> {
                                 height: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
                                 ),
                               )
                             : const Text('Enviar Link de Recuperação'),

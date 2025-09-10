@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:math';
 import '../../services/order_service.dart';
 import '../../models/order_model.dart' as ds_order;
+import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class ClientHomePage extends StatefulWidget {
   const ClientHomePage({super.key});
@@ -25,7 +26,7 @@ class _ClientHomePageState extends State<ClientHomePage> {
   GoogleMapController? _mapController;
   final OrderService _orderService = OrderService();
   ds_order.Order? _activeOrder;
-  bool _isLoadingOrder = true;
+  final bool _isLoadingOrder = true;
 
   final Color highlightColor = const Color(0xFFFF6A00);
 
@@ -133,14 +134,23 @@ class _ClientHomePageState extends State<ClientHomePage> {
   @override
   void initState() {
     super.initState();
-    _videoController = VideoPlayerController.asset('assets/videos/sondella.mp4')
-      ..initialize().then((_) {
+
+    // Create VideoPlayerOptions that allows mixing with other audio
+    final VideoPlayerOptions videoPlayerOptions = VideoPlayerOptions(
+      mixWithOthers:
+          true, // This allows other apps to play audio simultaneously
+    );
+
+    _videoController = VideoPlayerController.asset(
+      'assets/videos/sondella.mp4',
+      videoPlayerOptions: videoPlayerOptions, // Add this parameter
+    )..initialize().then((_) {
         setState(() {});
         _videoController.setLooping(true);
         _videoController.setVolume(0.0);
         _videoController.play();
       }).catchError((e) {
-        debugPrint("Erro ao carregar vídeo: $e");
+        debugPrint("Erro ao carregar vídeo: \$e");
       });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -151,41 +161,7 @@ class _ClientHomePageState extends State<ClientHomePage> {
           });
         }
       });
-      
-      _checkActiveOrder();
     });
-  }
-  
-  // Verificar se o cliente tem um pedido ativo
-  Future<void> _checkActiveOrder() async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) {
-      setState(() {
-        _isLoadingOrder = false;
-      });
-      return;
-    }
-    
-    try {
-      final activeOrders = await _orderService.getClientActiveOrdersOnce(currentUser.uid);
-      
-      // Verificar se o widget ainda está montado antes de atualizar o estado
-      if (!mounted) return;
-      
-      setState(() {
-        _activeOrder = activeOrders.isNotEmpty ? activeOrders.first : null;
-        _isLoadingOrder = false;
-      });
-    } catch (e) {
-      print('Erro ao verificar pedidos ativos: $e');
-      
-      if (!mounted) return;
-      
-      setState(() {
-        _activeOrder = null;
-        _isLoadingOrder = false;
-      });
-    }
   }
 
   @override
@@ -219,7 +195,8 @@ class _ClientHomePageState extends State<ClientHomePage> {
     }
   }
 
-  Widget _buildNavItem(IconData icon, String label, int index, bool selected, Color highlightColor) {
+  Widget _buildNavItem(IconData icon, String label, int index, bool selected,
+      Color highlightColor) {
     return GestureDetector(
       onTap: () => _onTabTapped(index),
       child: Column(
@@ -240,27 +217,29 @@ class _ClientHomePageState extends State<ClientHomePage> {
       ),
     );
   }
-  
+
   // Widget para o card de pedido ativo
   Widget _buildActiveOrderCard() {
     if (_activeOrder == null) return const SizedBox.shrink();
-    
+
     // Verifica o ID
     final String orderId = _activeOrder!.id ?? 'N/A';
-    final String displayId = orderId != 'N/A' ? orderId.substring(0, min(4, orderId.length)) : 'N/A';
-    
+    final String displayId =
+        orderId != 'N/A' ? orderId.substring(0, min(4, orderId.length)) : 'N/A';
+
     // Verifica os endereços
-    final String originAddress = _activeOrder!.originAddress.isNotEmpty 
-        ? _activeOrder!.originAddress 
+    final String originAddress = _activeOrder!.originAddress.isNotEmpty
+        ? _activeOrder!.originAddress
         : 'Endereço de origem indisponível';
-        
-    final String destinationAddress = _activeOrder!.destinationAddress.isNotEmpty 
-        ? _activeOrder!.destinationAddress 
-        : 'Endereço de destino indisponível';
-    
+
+    final String destinationAddress =
+        _activeOrder!.destinationAddress.isNotEmpty
+            ? _activeOrder!.destinationAddress
+            : 'Endereço de destino indisponível';
+
     String statusText;
     IconData statusIcon;
-    
+
     switch (_activeOrder!.status) {
       case ds_order.OrderStatus.pending:
         statusText = 'Aguardando entregador';
@@ -282,7 +261,7 @@ class _ClientHomePageState extends State<ClientHomePage> {
         statusText = 'Status desconhecido';
         statusIcon = Symbols.help;
     }
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 16),
       decoration: BoxDecoration(
@@ -341,7 +320,8 @@ class _ClientHomePageState extends State<ClientHomePage> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: highlightColor.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(20),
@@ -358,7 +338,7 @@ class _ClientHomePageState extends State<ClientHomePage> {
               ],
             ),
           ),
-          
+
           // Informações do pedido
           Padding(
             padding: const EdgeInsets.all(16),
@@ -369,16 +349,18 @@ class _ClientHomePageState extends State<ClientHomePage> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Symbols.location_on, color: Colors.white70, size: 16),
+                    const Icon(Symbols.location_on,
+                        color: Colors.white70, size: 16),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text('Origem:',
-                            style: TextStyle(color: Colors.white70, fontSize: 12)),
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12)),
                           Text(_activeOrder!.originAddress,
-                            style: const TextStyle(color: Colors.white)),
+                              style: const TextStyle(color: Colors.white)),
                         ],
                       ),
                     ),
@@ -395,27 +377,30 @@ class _ClientHomePageState extends State<ClientHomePage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text('Destino:',
-                            style: TextStyle(color: Colors.white70, fontSize: 12)),
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12)),
                           Text(_activeOrder!.destinationAddress,
-                            style: const TextStyle(color: Colors.white)),
+                              style: const TextStyle(color: Colors.white)),
                         ],
                       ),
                     ),
                   ],
                 ),
-                
+
                 // Botão para acompanhar pedido
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
                     onPressed: () {
-                      context.go('/cliente/client_orderstate', extra: {'orderId': _activeOrder!.id});
+                      context.go('/cliente/client_orderstate',
+                          extra: {'orderId': _activeOrder!.id});
                     },
                     style: FilledButton.styleFrom(
                       backgroundColor: highlightColor,
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: const Icon(Symbols.map, size: 18),
                     label: const Text('Acompanhar Pedido'),
@@ -433,172 +418,180 @@ class _ClientHomePageState extends State<ClientHomePage> {
   Widget build(BuildContext context) {
     final double horizontalMargin = MediaQuery.of(context).size.width * 0.05;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F0F),
-        title: Text(
-          _showGreeting ? _getGreeting() : 'DS Delivery',
-          style: TextStyle(
-            color: highlightColor,
-            fontFamily: 'SpaceGrotesk',
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        centerTitle: true,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: Icon(_showUI ? Symbols.visibility_off : Symbols.visibility, color: highlightColor),
-            onPressed: () => setState(() => _showUI = !_showUI),
-          )
-        ],
-      ),
-      body: Stack(
-        children: [
-          GoogleMap(
-            onMapCreated: (GoogleMapController controller) {
-              _mapController = controller;
-              _mapController!.setMapStyle(_darkMapStyle);
-            },
-            initialCameraPosition: const CameraPosition(
-              target: LatLng(-25.9692, 32.5732), // Maputo, Mozambique
-              zoom: 13.0,
+    return BackHandler(
+        isRoot: true,
+        showExitWarning: true,
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0F0F0F),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF0F0F0F),
+            title: Text(
+              _showGreeting ? _getGreeting() : 'DS Delivery',
+              style: TextStyle(
+                color: highlightColor,
+                fontFamily: 'SpaceGrotesk',
+                fontWeight: FontWeight.w700,
+              ),
             ),
-            mapType: MapType.normal,
-            myLocationEnabled: false,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
+            centerTitle: true,
+            elevation: 0,
+            actions: [
+              IconButton(
+                icon: Icon(
+                    _showUI ? Symbols.visibility_off : Symbols.visibility,
+                    color: highlightColor),
+                onPressed: () => setState(() => _showUI = !_showUI),
+              )
+            ],
           ),
-
-          IgnorePointer(
-            ignoring: !_showUI,
-            child: AnimatedOpacity(
-              opacity: _showUI ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'Chame Um Motorista Onde Estiveres!',
-                      style: TextStyle(
-                        fontFamily: 'SpaceGrotesk',
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-
-                    FilledButton(
-                      onPressed: _activeOrder != null 
-                        ? null // Desabilita se houver pedido ativo
-                        : () {
-                            context.go('/cliente/client_createorder');
-                          },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _activeOrder != null
-                          ? Colors.grey.shade800
-                          : highlightColor,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
+          body: Stack(
+            children: [
+              GoogleMap(
+                onMapCreated: (GoogleMapController controller) {
+                  _mapController = controller;
+                  _mapController!.setMapStyle(_darkMapStyle);
+                },
+                initialCameraPosition: const CameraPosition(
+                  target: LatLng(-25.9692, 32.5732), // Maputo, Mozambique
+                  zoom: 13.0,
+                ),
+                mapType: MapType.normal,
+                myLocationEnabled: false,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                mapToolbarEnabled: false,
+              ),
+              IgnorePointer(
+                ignoring: !_showUI,
+                child: AnimatedOpacity(
+                  opacity: _showUI ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Chame Um Motorista Onde Estiveres!',
+                          style: TextStyle(
+                            fontFamily: 'SpaceGrotesk',
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Symbols.add_circle, 
-                            color: _activeOrder != null
-                              ? Colors.grey
-                              : Colors.white,
-                            size: 26),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Criar Pedido',
-                            style: TextStyle(
-                              color: _activeOrder != null
-                                ? Colors.grey
-                                : Colors.white,
-                              fontSize: 16
+                        const SizedBox(height: 16),
+
+                        FilledButton(
+                          onPressed: _activeOrder != null
+                              ? null // Desabilita se houver pedido ativo
+                              : () {
+                                  context.go('/cliente/client_createorder');
+                                },
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _activeOrder != null
+                                ? Colors.grey.shade800
+                                : highlightColor,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                    
-                    // Mostrar card de pedido ativo se existir
-                    if (_isLoadingOrder)
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: CircularProgressIndicator(color: highlightColor),
-                        ),
-                      )
-                    else if (_activeOrder != null)
-                      _buildActiveOrderCard(),
-
-                    const SizedBox(height: 16),
-                    AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: _videoController.value.isInitialized
-                            ? VideoPlayer(_videoController)
-                            : Container(
-                                color: Colors.white10,
-                                child: Center(
-                                  child: CircularProgressIndicator(color: highlightColor),
-                                ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Symbols.add_circle,
+                                  color: _activeOrder != null
+                                      ? Colors.grey
+                                      : Colors.white,
+                                  size: 26),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Criar Pedido',
+                                style: TextStyle(
+                                    color: _activeOrder != null
+                                        ? Colors.grey
+                                        : Colors.white,
+                                    fontSize: 16),
                               ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+                            ],
+                          ),
+                        ),
 
-          Positioned(
-            bottom: 20,
-            left: horizontalMargin,
-            right: horizontalMargin,
-            child: AnimatedOpacity(
-              opacity: _showUI ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              child: Container(
-                height: 70,
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color.fromARGB(200, 15, 15, 15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: highlightColor, width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: highlightColor.withAlpha(100),
-                      blurRadius: 12,
-                      spreadRadius: 2,
-                      offset: const Offset(0, 0),
+                        // Mostrar card de pedido ativo se existir
+                        if (_isLoadingOrder)
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 24),
+                              child: CircularProgressIndicator(
+                                  color: highlightColor),
+                            ),
+                          )
+                        else if (_activeOrder != null)
+                          _buildActiveOrderCard(),
+
+                        const SizedBox(height: 16),
+                        AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: _videoController.value.isInitialized
+                                ? VideoPlayer(_videoController)
+                                : Container(
+                                    color: Colors.white10,
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                          color: highlightColor),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildNavItem(Symbols.history, 'Histórico', 0, _currentIndex == 0, highlightColor),
-                    _buildNavItem(Symbols.home, 'Início', 1, _currentIndex == 1, highlightColor),
-                    _buildNavItem(Symbols.person, 'Perfil', 2, _currentIndex == 2, highlightColor),
-                  ],
+                  ),
                 ),
               ),
-            ),
+              Positioned(
+                bottom: 20,
+                left: horizontalMargin,
+                right: horizontalMargin,
+                child: AnimatedOpacity(
+                  opacity: _showUI ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: Container(
+                    height: 70,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color.fromARGB(200, 15, 15, 15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: highlightColor, width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: highlightColor.withAlpha(100),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                          offset: const Offset(0, 0),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildNavItem(Symbols.history, 'Histórico', 0,
+                            _currentIndex == 0, highlightColor),
+                        _buildNavItem(Symbols.home, 'Início', 1,
+                            _currentIndex == 1, highlightColor),
+                        _buildNavItem(Symbols.person, 'Perfil', 2,
+                            _currentIndex == 2, highlightColor),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        ));
   }
 }

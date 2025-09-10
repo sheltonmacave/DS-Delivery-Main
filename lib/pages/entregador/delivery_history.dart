@@ -8,9 +8,9 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter/foundation.dart';
 import '../../models/order_model.dart' as ds_order;
 import '../../services/order_service.dart';
+import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class DeliveryHistoryPage extends StatefulWidget {
   const DeliveryHistoryPage({super.key});
@@ -19,26 +19,27 @@ class DeliveryHistoryPage extends StatefulWidget {
   State<DeliveryHistoryPage> createState() => _DeliveryHistoryPageState();
 }
 
-class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with AutomaticKeepAliveClientMixin {
+class _DeliveryHistoryPageState extends State<DeliveryHistoryPage>
+    with AutomaticKeepAliveClientMixin {
   final Color highlightColor = const Color(0xFFFF6A00);
   int _currentIndex = 0;
   final OrderService _orderService = OrderService();
-  
+
   // Track visible items by their index
   final Set<int> _visibleItems = {};
-  
+
   // Track which orders have their routes loaded
   final Set<int> _routesLoaded = {};
-  
+
   // Store polylines for each order
   final Map<int, Set<Polyline>> _orderPolylines = {};
-  
+
   // Store markers for each order
   final Map<int, Set<Marker>> _orderMarkers = {};
-  
+
   List<ds_order.Order> _orders = [];
   bool _isLoading = true;
-  
+
   // Scroll controller to track visible items
   final ScrollController _scrollController = ScrollController();
 
@@ -102,14 +103,14 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
     }
   ]
   ''';
-  
+
   static const String googleAPIKey = 'AIzaSyCNlTXTSlKc2cCyGbWKqKCIkRN4JMiY1tQ';
 
   @override
   void initState() {
     super.initState();
     _loadOrders();
-    
+
     // Listen to scroll events to update visible items
     _scrollController.addListener(_updateVisibleItems);
   }
@@ -120,45 +121,45 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
     _scrollController.dispose();
     super.dispose();
   }
-  
+
   // Update which items are visible during scrolling
   void _updateVisibleItems() {
     // Delay the processing to avoid doing too much work during scrolling
     Future.delayed(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      
+
       // Only process if we're not currently scrolling
       if (!_scrollController.position.isScrollingNotifier.value) {
         _calculateVisibleItems();
       }
     });
   }
-  
+
   // Calculate which items are currently visible in the viewport
   void _calculateVisibleItems() {
     if (!mounted || _orders.isEmpty) return;
-    
+
     final Set<int> newVisibleItems = {};
-    
+
     for (int i = 0; i < _orders.length; i++) {
       final RenderObject? renderObject = _getMapRenderObject(i);
       if (renderObject != null && _isItemVisible(renderObject)) {
         newVisibleItems.add(i);
-        
+
         // Preload route data if not already loaded
         if (!_routesLoaded.contains(i)) {
           _preloadRouteData(i);
         }
       }
     }
-    
+
     // Update visible items set
     setState(() {
       _visibleItems.clear();
       _visibleItems.addAll(newVisibleItems);
     });
   }
-  
+
   // Get render object for a specific map
   RenderObject? _getMapRenderObject(int index) {
     final mapKey = GlobalKey();
@@ -168,24 +169,27 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
     }
     return null;
   }
-  
+
   // Check if a render object is visible in the viewport
   bool _isItemVisible(RenderObject renderObject) {
     try {
-      final RenderAbstractViewport viewport = RenderAbstractViewport.of(renderObject);
-      final RevealedOffset revealedOffset = viewport.getOffsetToReveal(renderObject, 0.0);
+      final RenderAbstractViewport viewport =
+          RenderAbstractViewport.of(renderObject);
+      final RevealedOffset revealedOffset =
+          viewport.getOffsetToReveal(renderObject, 0.0);
       final double deltaTop = revealedOffset.offset - _scrollController.offset;
-      
+
       // Check if the item is within the viewport bounds
-      return deltaTop < viewport.paintBounds.height && deltaTop > -renderObject.paintBounds.height;
+      return deltaTop < viewport.paintBounds.height &&
+          deltaTop > -renderObject.paintBounds.height;
     } catch (e) {
       return false;
     }
   }
-  
+
   // Store map container keys for finding render objects
   final Map<int, GlobalKey> _mapContainerKeys = {};
-  
+
   // Get or create a key for a specific map index
   GlobalKey _getMapContainerKey(int index) {
     if (!_mapContainerKeys.containsKey(index)) {
@@ -196,27 +200,29 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
 
   Future<void> _loadOrders() async {
     final currentUser = FirebaseAuth.instance.currentUser;
-    
+
     if (currentUser == null) {
       setState(() => _isLoading = false);
       return;
     }
-    
+
     try {
-      final completedOrders = await _orderService.getDriverCompletedOrdersOnce(currentUser.uid);
-      
+      final completedOrders =
+          await _orderService.getDriverCompletedOrdersOnce(currentUser.uid);
+
       if (mounted) {
         setState(() {
           _orders = completedOrders;
           _isLoading = false;
-          
+
           // Pre-compute markers for all orders to avoid doing it later
           for (int i = 0; i < _orders.length; i++) {
             _createMarkersForOrder(i);
           }
-          
+
           // After a short delay, calculate initially visible items
-          Future.delayed(const Duration(milliseconds: 500), _calculateVisibleItems);
+          Future.delayed(
+              const Duration(milliseconds: 500), _calculateVisibleItems);
         });
       }
     } catch (e) {
@@ -226,21 +232,17 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
       }
     }
   }
-  
+
   // Create markers for an order
   void _createMarkersForOrder(int index) {
     final order = _orders[index];
-    
-    final originLocation = LatLng(
-      order.originLocation.latitude, 
-      order.originLocation.longitude
-    );
-    
-    final destinationLocation = LatLng(
-      order.destinationLocation.latitude,
-      order.destinationLocation.longitude
-    );
-    
+
+    final originLocation =
+        LatLng(order.originLocation.latitude, order.originLocation.longitude);
+
+    final destinationLocation = LatLng(order.destinationLocation.latitude,
+        order.destinationLocation.longitude);
+
     _orderMarkers[index] = {
       Marker(
         markerId: MarkerId('origin_$index'),
@@ -254,45 +256,40 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
       ),
     };
   }
-  
+
   // Preload route data for a map that's about to become visible
   Future<void> _preloadRouteData(int index) async {
     if (_routesLoaded.contains(index) || index >= _orders.length) return;
-    
+
     final order = _orders[index];
-    
-    final originLocation = LatLng(
-      order.originLocation.latitude, 
-      order.originLocation.longitude
-    );
-    
-    final destinationLocation = LatLng(
-      order.destinationLocation.latitude,
-      order.destinationLocation.longitude
-    );
-    
+
+    final originLocation =
+        LatLng(order.originLocation.latitude, order.originLocation.longitude);
+
+    final destinationLocation = LatLng(order.destinationLocation.latitude,
+        order.destinationLocation.longitude);
+
     try {
       final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/directions/json'
-        '?origin=${originLocation.latitude},${originLocation.longitude}'
-        '&destination=${destinationLocation.latitude},${destinationLocation.longitude}'
-        '&mode=driving'
-        '&key=$googleAPIKey'
-      );
-      
+          'https://maps.googleapis.com/maps/api/directions/json'
+          '?origin=${originLocation.latitude},${originLocation.longitude}'
+          '&destination=${destinationLocation.latitude},${destinationLocation.longitude}'
+          '&mode=driving'
+          '&key=$googleAPIKey');
+
       final response = await http.get(url);
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        
+
         if (data['status'] == 'OK') {
           final points = data['routes'][0]['overview_polyline']['points'];
           final polylinePoints = PolylinePoints().decodePolyline(points);
-          
+
           final List<LatLng> polylineCoordinates = polylinePoints
               .map((point) => LatLng(point.latitude, point.longitude))
               .toList();
-          
+
           if (mounted) {
             setState(() {
               _orderPolylines[index] = {
@@ -308,7 +305,8 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
             });
           }
         } else {
-          _createStraightLineFallback(index, originLocation, destinationLocation);
+          _createStraightLineFallback(
+              index, originLocation, destinationLocation);
         }
       } else {
         _createStraightLineFallback(index, originLocation, destinationLocation);
@@ -320,7 +318,8 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
   }
 
   // Create straight line between points when API fails
-  void _createStraightLineFallback(int index, LatLng origin, LatLng destination) {
+  void _createStraightLineFallback(
+      int index, LatLng origin, LatLng destination) {
     if (mounted) {
       setState(() {
         _orderPolylines[index] = {
@@ -353,28 +352,29 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
         break;
     }
   }
-  
+
   // Handle map creation
   void _onMapCreated(GoogleMapController controller, int index) {
     controller.setMapStyle(_darkMapStyle);
-    
+
     // If we already have route data, set the camera bounds
-    if (_orderPolylines.containsKey(index) && _orderPolylines[index]!.isNotEmpty) {
+    if (_orderPolylines.containsKey(index) &&
+        _orderPolylines[index]!.isNotEmpty) {
       final polyline = _orderPolylines[index]!.first;
       final bounds = _calculateBounds(polyline.points);
       controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 40));
     } else {
       // Otherwise, use origin and destination markers
-      if (_orderMarkers.containsKey(index) && _orderMarkers[index]!.length >= 2) {
+      if (_orderMarkers.containsKey(index) &&
+          _orderMarkers[index]!.length >= 2) {
         final markers = _orderMarkers[index]!.toList();
-        final bounds = _calculateBounds(
-          markers.map((marker) => marker.position).toList()
-        );
+        final bounds =
+            _calculateBounds(markers.map((marker) => marker.position).toList());
         controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 40));
       }
     }
   }
-  
+
   // Calculate bounds to fit all points
   LatLngBounds _calculateBounds(List<LatLng> points) {
     double minLat = points.first.latitude;
@@ -442,8 +442,10 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
               onPressed: () => context.go('/entregador/delivery_orderslist'),
               style: FilledButton.styleFrom(
                 backgroundColor: highlightColor,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
               ),
               icon: const Icon(Symbols.search, color: Colors.white),
               label: const Text(
@@ -460,28 +462,24 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
       ),
     );
   }
-  
+
   // Build map or static placeholder based on visibility
   Widget _buildMapForOrder(int index, ds_order.Order order) {
-    final originLocation = LatLng(
-      order.originLocation.latitude, 
-      order.originLocation.longitude
-    );
-    
-    final destinationLocation = LatLng(
-      order.destinationLocation.latitude,
-      order.destinationLocation.longitude
-    );
-    
+    final originLocation =
+        LatLng(order.originLocation.latitude, order.originLocation.longitude);
+
+    final destinationLocation = LatLng(order.destinationLocation.latitude,
+        order.destinationLocation.longitude);
+
     // Center position between origin and destination
     final centerPosition = LatLng(
       (originLocation.latitude + destinationLocation.latitude) / 2,
       (originLocation.longitude + destinationLocation.longitude) / 2,
     );
-    
+
     // Use a container key to track this map's visibility
     final containerKey = _getMapContainerKey(index);
-    
+
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: Container(
@@ -509,14 +507,16 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
               polylines: _orderPolylines[index] ?? {},
               markers: _orderMarkers[index] ?? {},
               onMapCreated: (controller) => _onMapCreated(controller, index),
-              liteModeEnabled: !_visibleItems.contains(index), // Use lite mode for non-visible maps
+              liteModeEnabled: !_visibleItems
+                  .contains(index), // Use lite mode for non-visible maps
             ),
-            
+
             // Loading indicator while route is being fetched
             if (!_routesLoaded.contains(index))
               Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
                     color: Colors.black54,
                     borderRadius: BorderRadius.circular(16),
@@ -529,7 +529,8 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
                         height: 16,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(highlightColor),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(highlightColor),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -550,208 +551,232 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    
+
     final double horizontalMargin = MediaQuery.of(context).size.width * 0.05;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.6),
-        elevation: 0,
-        centerTitle: true,
-        title: Text(
-          'Histórico de Entregas',
-          style: TextStyle(
-            fontFamily: 'SpaceGrotesk',
-            fontWeight: FontWeight.w700,
-            color: highlightColor,
-          ),
-        ),
-      ),
-      body: Stack(
-        children: [
-          // Main content
-          if (_isLoading)
-            Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(highlightColor),
+    return BackHandler(
+        alternativeRoute: '/entregador/delivery_home',
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0F0F0F),
+          appBar: AppBar(
+            backgroundColor: Colors.black.withOpacity(0.6),
+            elevation: 0,
+            centerTitle: true,
+            title: Text(
+              'Histórico de Entregas',
+              style: TextStyle(
+                fontFamily: 'SpaceGrotesk',
+                fontWeight: FontWeight.w700,
+                color: highlightColor,
               ),
-            )
-          else if (_orders.isEmpty)
-            _buildEmptyHistoryView()
-          else
-            // Use ListView.builder with scroll controller
-            ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-              itemCount: _orders.length,
-              cacheExtent: 500, // Increase cache to help with scrolling
-              itemBuilder: (context, index) {
-                final order = _orders[index];
-                
-                // Formatted date
-                final createdAtFormatted = DateFormat('dd/MM/yyyy HH:mm')
-                    .format(order.createdAt);
-                
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: GestureDetector(
-                    onTap: () {
-                      print('Navegando para resumo com orderId: ${order.id}');
-                      context.go('/entregador/delivery_ordersummary', extra: {'orderId': order.id});
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: highlightColor.withOpacity(0.4), width: 1),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Map area
-                          _buildMapForOrder(index, order),
-                          
-                          // Card content
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Header with ID and Date
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(Symbols.numbers, color: highlightColor, size: 16),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '#${order.id!.substring(0, 4)}',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    Row(
-                                      children: [
-                                        const Icon(Symbols.calendar_month, color: Colors.white70, size: 14),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          createdAtFormatted,
-                                          style: const TextStyle(color: Colors.white70, fontSize: 12),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                
-                                const SizedBox(height: 12),
-                                
-                                // Addresses
-                                Wrap(
-                                  spacing: 8,
-                                  children: [
-                                    _buildAddressChip(
-                                      Symbols.location_on, 
-                                      order.originAddress, 
-                                      Colors.orange
-                                    ),
-                                    _buildAddressChip(
-                                      Symbols.flag, 
-                                      order.destinationAddress, 
-                                      Colors.blue
-                                    ),
-                                  ],
-                                ),
-                                
-                                const SizedBox(height: 12),
-                                
-                                // Footer
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    // Status badge
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: _getStatusColor(order.status).withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        _getStatusText(order.status),
-                                        style: TextStyle(
-                                          color: _getStatusColor(order.status),
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                    
-                                    // Rating
-                                    Row(
-                                      children: [
-                                        Icon(Symbols.star, color: highlightColor, size: 18),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '4.9',
-                                          style: TextStyle(
-                                            color: highlightColor,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+            ),
+          ),
+          body: Stack(
+            children: [
+              // Main content
+              if (_isLoading)
+                Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(highlightColor),
+                  ),
+                )
+              else if (_orders.isEmpty)
+                _buildEmptyHistoryView()
+              else
+                // Use ListView.builder with scroll controller
+                ListView.builder(
+                  controller: _scrollController,
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                  itemCount: _orders.length,
+                  cacheExtent: 500, // Increase cache to help with scrolling
+                  itemBuilder: (context, index) {
+                    final order = _orders[index];
+
+                    // Formatted date
+                    final createdAtFormatted =
+                        DateFormat('dd/MM/yyyy HH:mm').format(order.createdAt);
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: GestureDetector(
+                        onTap: () {
+                          print(
+                              'Navegando para resumo com orderId: ${order.id}');
+                          context.go('/entregador/delivery_ordersummary',
+                              extra: {'orderId': order.id});
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A1A1A),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                                color: highlightColor.withOpacity(0.4),
+                                width: 1),
                           ),
-                        ],
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Map area
+                              _buildMapForOrder(index, order),
+
+                              // Card content
+                              Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Header with ID and Date
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(Symbols.numbers,
+                                                color: highlightColor,
+                                                size: 16),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '#${order.id!.substring(0, 4)}',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        Row(
+                                          children: [
+                                            const Icon(Symbols.calendar_month,
+                                                color: Colors.white70,
+                                                size: 14),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              createdAtFormatted,
+                                              style: const TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: 12),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+
+                                    const SizedBox(height: 12),
+
+                                    // Addresses
+                                    Wrap(
+                                      spacing: 8,
+                                      children: [
+                                        _buildAddressChip(
+                                            Symbols.location_on,
+                                            order.originAddress,
+                                            const Color(0xFFFF6A00)),
+                                        _buildAddressChip(
+                                            Symbols.flag,
+                                            order.destinationAddress,
+                                            Colors.blue),
+                                      ],
+                                    ),
+
+                                    const SizedBox(height: 12),
+
+                                    // Footer
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        // Status badge
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 12, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: _getStatusColor(order.status)
+                                                .withOpacity(0.2),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            _getStatusText(order.status),
+                                            style: TextStyle(
+                                              color:
+                                                  _getStatusColor(order.status),
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+
+                                        // Rating
+                                        Row(
+                                          children: [
+                                            Icon(Symbols.star,
+                                                color: highlightColor,
+                                                size: 18),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '4.9',
+                                              style: TextStyle(
+                                                color: highlightColor,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                    );
+                  },
+                ),
+
+              // Bottom navigation bar
+              Positioned(
+                bottom: 20,
+                left: horizontalMargin,
+                right: horizontalMargin,
+                child: Container(
+                  height: 70,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 30, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color.fromARGB(200, 15, 15, 15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: highlightColor, width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: highlightColor.withAlpha(100),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 0),
+                      ),
+                    ],
                   ),
-                );
-              },
-            ),
-          
-          // Bottom navigation bar
-          Positioned(
-            bottom: 20,
-            left: horizontalMargin,
-            right: horizontalMargin,
-            child: Container(
-              height: 70,
-              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color.fromARGB(200, 15, 15, 15),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: highlightColor, width: 1),
-                boxShadow: [
-                  BoxShadow(
-                    color: highlightColor.withAlpha(100),
-                    blurRadius: 12,
-                    spreadRadius: 2,
-                    offset: const Offset(0, 0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildNavItem(
+                          Symbols.history, 'Histórico', 0, _currentIndex == 0),
+                      _buildNavItem(
+                          Symbols.list_alt, 'Pedidos', 1, _currentIndex == 1),
+                      _buildNavItem(
+                          Symbols.home, 'Início', 2, _currentIndex == 2),
+                      _buildNavItem(
+                          Symbols.person, 'Perfil', 3, _currentIndex == 3),
+                    ],
                   ),
-                ],
+                ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _buildNavItem(Symbols.history, 'Histórico', 0, _currentIndex == 0),
-                  _buildNavItem(Symbols.list_alt, 'Pedidos', 1, _currentIndex == 1),
-                  _buildNavItem(Symbols.home, 'Início', 2, _currentIndex == 2),
-                  _buildNavItem(Symbols.person, 'Perfil', 3, _currentIndex == 3),
-                ],
-              ),
-            ),
+            ],
           ),
-        ],
-      ),
-    );
+        ));
   }
 
   // Helper widgets
@@ -796,7 +821,7 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
         return Colors.grey;
     }
   }
-  
+
   // Helper for status text
   String _getStatusText(ds_order.OrderStatus status) {
     switch (status) {
@@ -838,7 +863,7 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage> with Automati
       ),
     );
   }
-  
+
   @override
   bool get wantKeepAlive => true;
 }

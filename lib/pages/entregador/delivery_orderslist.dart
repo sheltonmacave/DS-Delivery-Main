@@ -8,6 +8,7 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import '../../services/notifications_service.dart';
 import '../../services/order_service.dart';
 import '../../models/order_model.dart' as ds_order;
+import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class DeliveryOrdersListPage extends StatefulWidget {
   const DeliveryOrdersListPage({super.key});
@@ -482,7 +483,9 @@ class _DeliveryOrdersListPageState extends State<DeliveryOrdersListPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return BackHandler(
+    alternativeRoute: '/entregador/delivery_home',
+    child: Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
       appBar: AppBar(
         backgroundColor: Colors.black.withOpacity(0.6),
@@ -635,6 +638,7 @@ class _DeliveryOrdersListPageState extends State<DeliveryOrdersListPage> {
           ],
         ),
       ),
+    )
     );
   }
 

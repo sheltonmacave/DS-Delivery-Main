@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'pages/splash_screen.dart';
 import 'pages/onboarding_page.dart';
 import 'pages/account_selection.dart';
+import 'pages/complete_profile_page.dart';
 import 'pages/cliente/client_auth.dart';
 import 'pages/cliente/client_home.dart';
 import 'pages/cliente/client_profile.dart';
@@ -31,6 +33,17 @@ String? userRole;
 Future<void> initializeUserRole() async {
   final prefs = await SharedPreferences.getInstance();
   userRole = prefs.getString('user_role');
+}
+
+void handleBackButtonBehavior() {
+  // Adicionar listener para o evento de botão de volta do sistema
+  SystemChannels.platform.setMethodCallHandler((call) async {
+    if (call.method == 'SystemNavigator.pop') {
+      // Permitir que o comportamento padrão seja executado
+      return null;
+    }
+    return null;
+  });
 }
 
 CustomTransitionPage buildTransitionPage(Widget child, GoRouterState state) {
@@ -64,6 +77,11 @@ final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
   debugLogDiagnostics: true,
   refreshListenable: authNotifier,
+  routerNeglect: false,
+  navigatorKey: GlobalKey<NavigatorState>(),
+  errorBuilder: (context, state) => const Scaffold(
+    body: Center(child: Text('An error occurred')),
+  ),
   redirect: (context, state) async {
     final user = FirebaseAuth.instance.currentUser;
     final location = state.uri.toString();
@@ -124,6 +142,13 @@ final GoRouter appRouter = GoRouter(
       name: 'account_selection',
       pageBuilder: (context, state) => buildTransitionPage(const AccountSelectionPage(),
     state)),
+    GoRoute(
+      path: '/complete_profile',
+      builder: (context, state) {
+        final targetRole = (state.extra as Map<String, dynamic>)['targetRole'] as String;
+        return CompleteProfilePage(targetRole: targetRole);
+      },
+    ),
     GoRoute(
       path: '/cliente/client_auth',
       name: 'client_auth',

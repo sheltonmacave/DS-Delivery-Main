@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:async';
 import '../../services/order_service.dart';
 import '../../models/order_model.dart' as ds_order;
+import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class DeliveryHomePage extends StatefulWidget {
   const DeliveryHomePage({super.key});
@@ -27,7 +28,7 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
   GoogleMapController? _mapController;
   final OrderService _orderService = OrderService();
   ds_order.Order? _activeOrder;
-  bool _isLoadingOrder = true;
+  final bool _isLoadingOrder = true;
 
   final Color highlightColor = const Color(0xFFFF6A00);
 
@@ -159,7 +160,15 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
   void initState() {
     super.initState();
 
-    _videoController = VideoPlayerController.asset('assets/videos/sondella.mp4')
+    // Create VideoPlayerOptions that allows mixing with other audio
+    final VideoPlayerOptions videoPlayerOptions = VideoPlayerOptions(
+      mixWithOthers: true, // This allows other apps to play audio simultaneously
+    );
+    
+    _videoController = VideoPlayerController.asset(
+      'assets/videos/sondella.mp4',
+      videoPlayerOptions: videoPlayerOptions, // Add this parameter
+    )
       ..initialize().then((_) {
         setState(() {});
         _videoController.setLooping(true);
@@ -177,43 +186,10 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
           });
         }
       });
-      
-      _checkActiveDelivery();
+
     });
 
     _loadCurrentPosition();
-  }
-  
-  // Verificar se o entregador tem uma entrega ativa
-  Future<void> _checkActiveDelivery() async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) {
-      setState(() {
-        _isLoadingOrder = false;
-      });
-      return;
-    }
-    
-    try {
-      final activeOrders = await _orderService.getDriverActiveOrdersOnce(currentUser.uid);
-      
-      // Verificar se o widget ainda está montado
-      if (!mounted) return;
-      
-      setState(() {
-        _activeOrder = activeOrders.isNotEmpty ? activeOrders.first : null;
-        _isLoadingOrder = false;
-      });
-    } catch (e) {
-      print('Erro ao verificar entregas ativas: $e');
-      
-      if (!mounted) return;
-      
-      setState(() {
-        _activeOrder = null;
-        _isLoadingOrder = false;
-      });
-    }
   }
 
   Future<void> _loadCurrentPosition() async {
@@ -260,7 +236,8 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
     }
   }
 
-  Widget _buildNavItem(IconData icon, String label, int index, bool selected, Color highlightColor) {
+  Widget _buildNavItem(IconData icon, String label, int index, bool selected,
+      Color highlightColor) {
     return GestureDetector(
       onTap: () => _onTabTapped(index),
       child: Column(
@@ -281,28 +258,30 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
       ),
     );
   }
-  
+
   // Widget para o card de entrega ativa
   Widget _buildActiveDeliveryCard() {
     if (_activeOrder == null) return const SizedBox.shrink();
-    
+
     // Verifica o ID de forma segura
     final String orderId = _activeOrder!.id ?? 'N/A';
-    final String displayId = orderId != 'N/A' ? orderId.substring(0, min(4, orderId.length)) : 'N/A';
-    
+    final String displayId =
+        orderId != 'N/A' ? orderId.substring(0, min(4, orderId.length)) : 'N/A';
+
     // Verifica os endereços de forma segura
-    final String originAddress = _activeOrder!.originAddress.isNotEmpty 
-        ? _activeOrder!.originAddress 
+    final String originAddress = _activeOrder!.originAddress.isNotEmpty
+        ? _activeOrder!.originAddress
         : 'Endereço de origem indisponível';
-        
-    final String destinationAddress = _activeOrder!.destinationAddress.isNotEmpty 
-        ? _activeOrder!.destinationAddress 
-        : 'Endereço de destino indisponível';
-    
+
+    final String destinationAddress =
+        _activeOrder!.destinationAddress.isNotEmpty
+            ? _activeOrder!.destinationAddress
+            : 'Endereço de destino indisponível';
+
     // Define o status e ícone de forma segura
     String statusText;
     IconData statusIcon;
-    
+
     switch (_activeOrder!.status) {
       case ds_order.OrderStatus.driverAssigned:
         statusText = 'Aguardando coleta';
@@ -324,7 +303,7 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
         statusText = 'Status desconhecido';
         statusIcon = Symbols.help;
     }
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 16),
       decoration: BoxDecoration(
@@ -383,7 +362,8 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: highlightColor.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(20),
@@ -400,7 +380,7 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
               ],
             ),
           ),
-          
+
           // Informações do pedido
           Padding(
             padding: const EdgeInsets.all(16),
@@ -411,16 +391,18 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Symbols.location_on, color: Colors.white70, size: 16),
+                    const Icon(Symbols.location_on,
+                        color: Colors.white70, size: 16),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text('Origem:',
-                            style: TextStyle(color: Colors.white70, fontSize: 12)),
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12)),
                           Text(originAddress,
-                            style: const TextStyle(color: Colors.white)),
+                              style: const TextStyle(color: Colors.white)),
                         ],
                       ),
                     ),
@@ -437,36 +419,42 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text('Destino:',
-                            style: TextStyle(color: Colors.white70, fontSize: 12)),
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12)),
                           Text(destinationAddress,
-                            style: const TextStyle(color: Colors.white)),
+                              style: const TextStyle(color: Colors.white)),
                         ],
                       ),
                     ),
                   ],
                 ),
-                
+
                 // Botão para continuar entrega
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: orderId != 'N/A' ? () {
-                      try {
-                        context.go('/entregador/delivery_orderstate', extra: {'orderId': orderId});
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Erro ao abrir detalhes da entrega: $e'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    } : null,
+                    onPressed: orderId != 'N/A'
+                        ? () {
+                            try {
+                              context.go('/entregador/delivery_orderstate',
+                                  extra: {'orderId': orderId});
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                      'Erro ao abrir detalhes da entrega: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        : null,
                     style: FilledButton.styleFrom(
                       backgroundColor: highlightColor,
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: const Icon(Symbols.navigation, size: 18),
                     label: const Text('Continuar Entrega'),
@@ -484,175 +472,185 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
   Widget build(BuildContext context) {
     final double horizontalMargin = MediaQuery.of(context).size.width * 0.05;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F0F),
-        title: Text(
-          _showGreeting ? _getGreeting() : 'DS Delivery',
-          style: TextStyle(
-            color: highlightColor,
-            fontFamily: 'SpaceGrotesk',
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        centerTitle: true,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: Icon(_showUI ? Symbols.visibility_off : Symbols.visibility, color: highlightColor),
-            onPressed: () => setState(() => _showUI = !_showUI),
-          )
-        ],
-      ),
-      body: Stack(
-        children: [
-          GoogleMap(
-            onMapCreated: (GoogleMapController controller) {
-              _mapController = controller;
-              _mapController!.setMapStyle(_darkMapStyle);
-            },
-            initialCameraPosition: CameraPosition(
-              target: _currentPosition != null 
-                ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-                : const LatLng(-25.9692, 32.5732), // Maputo, Mozambique
-              zoom: 13.0,
+    return BackHandler(
+    isRoot: true,
+    showExitWarning: true,
+    child: Scaffold(
+          backgroundColor: const Color(0xFF0F0F0F),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF0F0F0F),
+            title: Text(
+              _showGreeting ? _getGreeting() : 'DS Delivery',
+              style: TextStyle(
+                color: highlightColor,
+                fontFamily: 'SpaceGrotesk',
+                fontWeight: FontWeight.w700,
+              ),
             ),
-            mapType: MapType.normal,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
+            centerTitle: true,
+            elevation: 0,
+            actions: [
+              IconButton(
+                icon: Icon(
+                    _showUI ? Symbols.visibility_off : Symbols.visibility,
+                    color: highlightColor),
+                onPressed: () => setState(() => _showUI = !_showUI),
+              )
+            ],
           ),
-
-          IgnorePointer(
-            ignoring: !_showUI,
-            child: AnimatedOpacity(
-              opacity: _showUI ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'Vai até onde o teu cliente estiver!',
-                      style: TextStyle(
-                        fontFamily: 'SpaceGrotesk',
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-
-                    FilledButton(
-                      onPressed: _activeOrder != null 
-                        ? null // Desabilita se houver entrega ativa
-                        : () {
-                            context.go('/entregador/delivery_orderslist');
-                          },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _activeOrder != null
-                          ? Colors.grey.shade800
-                          : highlightColor,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
+          body: Stack(
+            children: [
+              GoogleMap(
+                onMapCreated: (GoogleMapController controller) {
+                  _mapController = controller;
+                  _mapController!.setMapStyle(_darkMapStyle);
+                },
+                initialCameraPosition: CameraPosition(
+                  target: _currentPosition != null
+                      ? LatLng(_currentPosition!.latitude,
+                          _currentPosition!.longitude)
+                      : const LatLng(-25.9692, 32.5732), // Maputo, Mozambique
+                  zoom: 13.0,
+                ),
+                mapType: MapType.normal,
+                myLocationEnabled: true,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                mapToolbarEnabled: false,
+              ),
+              IgnorePointer(
+                ignoring: !_showUI,
+                child: AnimatedOpacity(
+                  opacity: _showUI ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Vai até onde o teu cliente estiver!',
+                          style: TextStyle(
+                            fontFamily: 'SpaceGrotesk',
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Symbols.list, 
-                            color: _activeOrder != null
-                              ? Colors.grey
-                              : Colors.white,
-                            size: 26),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Ver Lista de Pedidos',
-                            style: TextStyle(
-                              color: _activeOrder != null
-                                ? Colors.grey
-                                : Colors.white,
-                              fontSize: 16
+                        const SizedBox(height: 16),
+
+                        FilledButton(
+                          onPressed: _activeOrder != null
+                              ? null // Desabilita se houver entrega ativa
+                              : () {
+                                  context.go('/entregador/delivery_orderslist');
+                                },
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _activeOrder != null
+                                ? Colors.grey.shade800
+                                : highlightColor,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                    
-                    // Mostrar card de entrega ativa se existir
-                    if (_isLoadingOrder)
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: CircularProgressIndicator(color: highlightColor),
-                        ),
-                      )
-                    else if (_activeOrder != null)
-                      _buildActiveDeliveryCard(),
-
-                    const SizedBox(height: 16),
-                    AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: _videoController.value.isInitialized
-                            ? VideoPlayer(_videoController)
-                            : Container(
-                                color: Colors.white10,
-                                child: Center(
-                                  child: CircularProgressIndicator(color: highlightColor),
-                                ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Symbols.list,
+                                  color: _activeOrder != null
+                                      ? Colors.grey
+                                      : Colors.white,
+                                  size: 26),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Ver Lista de Pedidos',
+                                style: TextStyle(
+                                    color: _activeOrder != null
+                                        ? Colors.grey
+                                        : Colors.white,
+                                    fontSize: 16),
                               ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+                            ],
+                          ),
+                        ),
 
-          Positioned(
-            bottom: 20,
-            left: horizontalMargin,
-            right: horizontalMargin,
-            child: AnimatedOpacity(
-              opacity: _showUI ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              child: Container(
-                height: 70,
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color.fromARGB(200, 15, 15, 15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: highlightColor, width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: highlightColor.withAlpha(100),
-                      blurRadius: 12,
-                      spreadRadius: 2,
-                      offset: const Offset(0, 0),
+                        // Mostrar card de entrega ativa se existir
+                        if (_isLoadingOrder)
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 24),
+                              child: CircularProgressIndicator(
+                                  color: highlightColor),
+                            ),
+                          )
+                        else if (_activeOrder != null)
+                          _buildActiveDeliveryCard(),
+
+                        const SizedBox(height: 16),
+                        AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: _videoController.value.isInitialized
+                                ? VideoPlayer(_videoController)
+                                : Container(
+                                    color: Colors.white10,
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                          color: highlightColor),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildNavItem(Symbols.history, 'Histórico', 0, _currentIndex == 0, highlightColor),
-                    _buildNavItem(Symbols.list_alt, 'Pedidos', 1, _currentIndex == 1, highlightColor),
-                    _buildNavItem(Symbols.home, 'Início', 2, _currentIndex == 2, highlightColor),
-                    _buildNavItem(Symbols.person, 'Perfil', 3, _currentIndex == 3, highlightColor),
-                  ],
+                  ),
                 ),
               ),
-            ),
+              Positioned(
+                bottom: 20,
+                left: horizontalMargin,
+                right: horizontalMargin,
+                child: AnimatedOpacity(
+                  opacity: _showUI ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: Container(
+                    height: 70,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 30, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color.fromARGB(200, 15, 15, 15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: highlightColor, width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: highlightColor.withAlpha(100),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                          offset: const Offset(0, 0),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildNavItem(Symbols.history, 'Histórico', 0,
+                            _currentIndex == 0, highlightColor),
+                        _buildNavItem(Symbols.list_alt, 'Pedidos', 1,
+                            _currentIndex == 1, highlightColor),
+                        _buildNavItem(Symbols.home, 'Início', 2,
+                            _currentIndex == 2, highlightColor),
+                        _buildNavItem(Symbols.person, 'Perfil', 3,
+                            _currentIndex == 3, highlightColor),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        ));
   }
 }

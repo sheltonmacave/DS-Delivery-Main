@@ -10,6 +10,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:ds_delivery/services/auth_service.dart';
 import 'package:ds_delivery/services/auth_notifier.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ds_delivery/widgets/role_switcher_widget.dart';
+import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class ImagemDoStorage extends StatelessWidget {
   final String caminhoDaImagem; // Ex.: "imagens/perfil.jpg"
@@ -596,7 +598,9 @@ class _ClientProfilePageState extends State<ClientProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return BackHandler(
+    alternativeRoute: '/cliente/client_home',
+    child: Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F0F0F),
@@ -708,6 +712,7 @@ class _ClientProfilePageState extends State<ClientProfilePage> {
               child: Text('Área Perigosa', style: TextStyle(color: Color.fromARGB(255, 168, 168, 168))),
             ),
             const Divider(color: Color.fromARGB(255, 168, 168, 168)),
+            const RoleSwitcher(currentRole: 'cliente'),
             const SizedBox(height: 8),
             FilledButton.icon(
               onPressed: () {
@@ -788,6 +793,7 @@ class _ClientProfilePageState extends State<ClientProfilePage> {
           );
         },
       ),
+    )
     );
   }
 }

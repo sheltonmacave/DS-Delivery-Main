@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/material_symbols_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class ClientSupportPage extends StatelessWidget {
   final Color highlightColor = const Color(0xFFFF6A00);
@@ -11,7 +12,9 @@ class ClientSupportPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return BackHandler(
+    alternativeRoute: '/cliente/client_orderstate',
+    child: Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
       body: Column(
         children: [
@@ -87,6 +90,7 @@ class ClientSupportPage extends StatelessWidget {
           )
         ],
       ),
+    )
     );
   }
 

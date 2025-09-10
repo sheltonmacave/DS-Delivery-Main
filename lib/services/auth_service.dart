@@ -166,26 +166,81 @@ class AuthService {
     final storage = FirebaseStorage.instance;
 
     try {
-      // Apagar documento principal do utilizador
-      await firestore.collection('clientes').doc(uid).delete();
-
-      // Apagar todos os pedidos do utilizador
-      final pedidos = await firestore
-          .collection('pedidos')
-          .where('clienteId', isEqualTo: uid)
-          .get();
-      for (var doc in pedidos.docs) {
-        await doc.reference.delete();
+      // 1. Primeiro, obtenha o documento do usuário para saber os papéis (roles)
+      final userDoc = await firestore.collection('users').doc(uid).get();
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        final roles = userData?['roles'] as Map<String, dynamic>?;
+        final isCliente = roles?['cliente'] == true;
+        final isEntregador = roles?['entregador'] == true;
+        
+        // 2. Apagar pedidos associados ao usuário
+        if (isCliente) {
+          // Apagar pedidos onde o usuário é cliente
+          final clientPedidos = await firestore
+              .collection('orders') // Usando o nome da coleção correto
+              .where('clientId', isEqualTo: uid) // Campo correto baseado no seu modelo
+              .get();
+              
+          for (var doc in clientPedidos.docs) {
+            await doc.reference.delete();
+          }
+          
+          print('${clientPedidos.docs.length} pedidos do cliente foram excluídos');
+        }
+        
+        if (isEntregador) {
+          // Atualizar pedidos onde o usuário é entregador (definir como nulo ou reassociar)
+          final driverPedidos = await firestore
+              .collection('orders')
+              .where('driverId', isEqualTo: uid)
+              .get();
+              
+          for (var doc in driverPedidos.docs) {
+            // Opção 1: Excluir o pedido
+            // await doc.reference.delete();
+            
+            // Opção 2: Redefinir para pendente e remover entregador
+            await doc.reference.update({
+              'driverId': null,
+              'status': 0, // OrderStatus.pending.index
+              'statusUpdates': FieldValue.arrayUnion([{
+                'status': 0,
+                'timestamp': DateTime.now().toIso8601String(),
+                'description': 'Entregador removido do sistema'
+              }])
+            });
+          }
+          
+          print('${driverPedidos.docs.length} pedidos do entregador foram atualizados');
+        }
       }
 
-      // Apagar ficheiros no Storage (exemplo: foto de perfil)
-      final fotoPerfilRef =
-          storage.ref().child('clientes/$uid/foto_perfil.jpg');
+      // 3. Apagar a imagem de perfil do Storage (usando o caminho correto)
       try {
-        await fotoPerfilRef.delete();
+        // Diretório do usuário no storage
+        final userImagesRef = storage.ref().child('user_images').child(uid);
+        
+        // Listar todos os arquivos no diretório do usuário
+        final listResult = await userImagesRef.listAll();
+        
+        // Excluir cada arquivo
+        for (var item in listResult.items) {
+          await item.delete();
+          print('Arquivo excluído: ${item.fullPath}');
+        }
+        
+        // Tentar excluir especificamente a foto de perfil
+        await storage.ref().child('user_images/$uid/foto_perfil.jpg').delete();
+        print('Foto de perfil excluída');
       } catch (e) {
-        print('Nenhuma foto de perfil para apagar.');
+        print('Erro ao excluir arquivos do Storage: $e');
+        // Continua a execução mesmo se houver erro no Storage
       }
+
+      // 4. Excluir o documento do usuário do Firestore
+      await firestore.collection('users').doc(uid).delete();
+      print("Documento do usuário excluído com sucesso");
 
       print("Dados do utilizador apagados com sucesso.");
     } catch (e) {
@@ -206,14 +261,20 @@ class AuthService {
         password: password,
       );
 
+      // Salva o UID antes de reautenticar
+      final uid = user.uid;
+
       // Reautenticar antes de apagar
       await user.reauthenticateWithCredential(credential);
 
       // Apagar dados no Firestore e Storage
-      await _deleteUserData(user.uid);
+      await _deleteUserData(uid);
 
       // Apagar a conta no Firebase Auth
       await user.delete();
+
+      // Limpar role nos SharedPreferences
+      await clearUserRole();
 
       print("Conta e dados apagados com sucesso.");
     } catch (e) {

@@ -14,6 +14,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:convert';
 import '../../services/notifications_service.dart';
+import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class ClientCreateOrderPage extends StatefulWidget {
   const ClientCreateOrderPage({super.key});
@@ -27,34 +28,36 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
   final Set<int> _selectedTransportIndices = {};
   bool _isBottomSheetOpen = true;
   final OrderService _orderService = OrderService();
-  
+
   // Marker points
   LatLng? _originPoint;
   LatLng? _destinationPoint;
   bool _isSelectingOrigin = false;
   bool _isSelectingDestination = false;
-  
+
   // Dados de rota
   double? _routeDistanceKm;
   String? _routeDuration;
-  
+
   // Google Maps
   GoogleMapController? _mapController;
   final Set<Marker> _markers = {};
+  final Set<Marker> _poiMarkers = {}; // POI markers
   final Set<Polyline> _polylines = {};
-  
+
   // Controllers
   final TextEditingController _originController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
   final TextEditingController _observationsController = TextEditingController();
-  final DraggableScrollableController _scrollController = DraggableScrollableController();
-  
+  final DraggableScrollableController _scrollController =
+      DraggableScrollableController();
+
   // Sugestões
   List<Map<String, dynamic>> _originSuggestions = [];
   List<Map<String, dynamic>> _destinationSuggestions = [];
   bool _showOriginSuggestions = false;
   bool _showDestinationSuggestions = false;
-  
+
   // Dark style para Google Maps
   static const String _darkMapStyle = '''
   [
@@ -167,13 +170,51 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
     super.dispose();
   }
 
+  bool _validateOrderData() {
+    // Validar origem
+    if (_originPoint == null || _originController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor, selecione um ponto de origem')),
+      );
+      return false;
+    }
+    
+    // Validar destino
+    if (_destinationPoint == null || _destinationController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor, selecione um ponto de destino')),
+      );
+      return false;
+    }
+    
+    // Validar tipo de transporte
+    if (_selectedTransportIndices.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor, selecione um tipo de transporte')),
+      );
+      return false;
+    }
+    
+    // Validar se a rota foi calculada
+    if (_routeDistanceKm == null || _routeDuration == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor, aguarde o cálculo da rota ou tente novamente')),
+      );
+      return false;
+    }
+    
+    return true;
+  }
+
   // Método para obter localização atual
   Future<LatLng?> _getCurrentLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Os serviços de localização estão desativados. Por favor, ative-os.')),
+          const SnackBar(
+              content: Text(
+                  'Os serviços de localização estão desativados. Por favor, ative-os.')),
         );
         return null;
       }
@@ -183,15 +224,18 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('As permissões de localização foram negadas.')),
+            const SnackBar(
+                content: Text('As permissões de localização foram negadas.')),
           );
           return null;
         }
       }
-      
+
       if (permission == LocationPermission.deniedForever) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('As permissões de localização foram permanentemente negadas. Abra as configurações para ativar.')),
+          const SnackBar(
+              content: Text(
+                  'As permissões de localização foram permanentemente negadas. Abra as configurações para ativar.')),
         );
         return null;
       }
@@ -213,26 +257,27 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
     if (currentLocation != null) {
       try {
         // Obter o nome do local usando Geocoding API
-        const apiKey = 'AIzaSyCNlTXTSlKc2cCyGbWKqKCIkRN4JMiY1tQ'; 
+        const apiKey = 'AIzaSyCNlTXTSlKc2cCyGbWKqKCIkRN4JMiY1tQ';
         final url = Uri.https(
           'maps.googleapis.com',
           '/maps/api/geocode/json',
           {
-            'latlng': '${currentLocation.latitude},${currentLocation.longitude}',
+            'latlng':
+                '${currentLocation.latitude},${currentLocation.longitude}',
             'key': apiKey,
           },
         );
-        
+
         final response = await http.get(url);
         String locationName = "Localização Atual";
-        
+
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
           if (data['status'] == 'OK' && data['results'].isNotEmpty) {
             locationName = data['results'][0]['formatted_address'];
           }
         }
-        
+
         setState(() {
           if (isOrigin) {
             _originPoint = currentLocation;
@@ -242,12 +287,12 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
             _destinationController.text = locationName;
           }
         });
-        
+
         _updateMarkers();
         if (_originPoint != null && _destinationPoint != null) {
           _updateRoutePolyline();
         }
-        
+
         _moveCamera(currentLocation);
       } catch (e) {
         print("Erro ao definir localização atual: $e");
@@ -270,7 +315,7 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
     // IMPORTANT: Use a backend proxy or environment variables in production
     const apiKey = 'AIzaSyCNlTXTSlKc2cCyGbWKqKCIkRN4JMiY1tQ';
     final sessionToken = const Uuid().v4();
-    
+
     try {
       final url = Uri.https(
         'maps.googleapis.com',
@@ -284,11 +329,12 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
       );
 
       final response = await http.get(url);
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final predictions = List<Map<String, dynamic>>.from(data['predictions'].map((x) => x as Map<String, dynamic>));
-        
+        final predictions = List<Map<String, dynamic>>.from(
+            data['predictions'].map((x) => x as Map<String, dynamic>));
+
         setState(() {
           if (isOrigin) {
             _originSuggestions = predictions;
@@ -306,7 +352,7 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
 
   Future<Map<String, dynamic>?> _getPlaceDetails(String placeId) async {
     const apiKey = 'AIzaSyCNlTXTSlKc2cCyGbWKqKCIkRN4JMiY1tQ';
-    
+
     try {
       final url = Uri.https(
         'maps.googleapis.com',
@@ -319,7 +365,7 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
       );
 
       final response = await http.get(url);
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['status'] == 'OK') {
@@ -363,10 +409,30 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
     }
   }
 
-  // Modificado para não adicionar marcadores roxos no mapa
+  // Reimplementado para buscar POIs no mapa
   Future<void> _searchNearbyPlaces(LatLng location) async {
-    // Não adicionaremos mais os markers de POI
-    // Esta função agora está vazia, mas mantemos para possíveis usos futuros
+    // Esta função está vazia para evitar adicionar marcadores roxos indesejados
+  }
+
+  Future<void> _handlePoiClick(Map<String, dynamic> poi) async {
+    if (_isSelectingOrigin) {
+      setState(() {
+        _originPoint = poi['latLng'];
+        _originController.text = poi['name'];
+        _isSelectingOrigin = false;
+      });
+    } else if (_isSelectingDestination) {
+      setState(() {
+        _destinationPoint = poi['latLng'];
+        _destinationController.text = poi['name'];
+        _isSelectingDestination = false;
+      });
+    }
+    
+    _updateMarkers();
+    if (_originPoint != null && _destinationPoint != null) {
+      _updateRoutePolyline();
+    }
   }
 
   void _showPoiSelectionDialog(Map<String, dynamic> poi) {
@@ -379,9 +445,11 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(poi['vicinity'], style: const TextStyle(color: Colors.white70)),
+            Text(poi['vicinity'],
+                style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 16),
-            const Text('Deseja usar este local como:', style: TextStyle(color: Colors.white)),
+            const Text('Deseja usar este local como:',
+                style: TextStyle(color: Colors.white)),
           ],
         ),
         actions: [
@@ -434,8 +502,31 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
           markerId: const MarkerId("origin"),
           position: _originPoint!,
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-          infoWindow: const InfoWindow(title: "Origem"),
+          infoWindow: InfoWindow(
+            title: _originController.text != "Localização selecionada" 
+                ? _originController.text 
+                : "Origem"
+          ),
           zIndex: 2,
+          onTap: () {
+            if (_isSelectingOrigin) {
+              setState(() {
+                _originController.text = _originController.text != "Localização selecionada" 
+                    ? _originController.text 
+                    : "Origem";
+                _isSelectingOrigin = false;
+              });
+            } else if (_isSelectingDestination) {
+              setState(() {
+                _destinationController.text = _originController.text != "Localização selecionada" 
+                    ? _originController.text 
+                    : "Origem";
+                _destinationPoint = _originPoint;
+                _isSelectingDestination = false;
+                _updateRoutePolyline();
+              });
+            }
+          }
         ),
       );
     }
@@ -446,13 +537,40 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
           markerId: const MarkerId("destination"),
           position: _destinationPoint!,
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-          infoWindow: const InfoWindow(title: "Destino"),
+          infoWindow: InfoWindow(
+            title: _destinationController.text != "Localização selecionada" 
+                ? _destinationController.text 
+                : "Destino"
+          ),
           zIndex: 2,
+          onTap: () {
+            if (_isSelectingOrigin) {
+              setState(() {
+                _originController.text = _destinationController.text != "Localização selecionada" 
+                    ? _destinationController.text 
+                    : "Destino";
+                _originPoint = _destinationPoint;
+                _isSelectingOrigin = false;
+                _updateRoutePolyline();
+              });
+            } else if (_isSelectingDestination) {
+              setState(() {
+                _destinationController.text = _destinationController.text != "Localização selecionada" 
+                    ? _destinationController.text 
+                    : "Destino";
+                _isSelectingDestination = false;
+              });
+            }
+          }
         ),
       );
     }
     
     setState(() {});
+  }
+
+  void _handleMarkerTap(String markerId) {
+    
   }
 
   void _handleMapTap(LatLng point) {
@@ -479,6 +597,119 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
     }
   }
 
+  Future<void> _addPlacesOfInterestMarkers() async {
+    try {
+      const apiKey = 'AIzaSyCNlTXTSlKc2cCyGbWKqKCIkRN4JMiY1tQ';
+      
+      // Pegue o centro da visualização atual do mapa
+      final visibleRegion = await _mapController?.getVisibleRegion();
+      if (visibleRegion == null) return;
+      
+      // Calcular o centro
+      final center = LatLng(
+        (visibleRegion.northeast.latitude + visibleRegion.southwest.latitude) / 2,
+        (visibleRegion.northeast.longitude + visibleRegion.southwest.longitude) / 2,
+      );
+      
+      final url = Uri.https(
+        'maps.googleapis.com',
+        '/maps/api/place/nearbysearch/json',
+        {
+          'location': '${center.latitude},${center.longitude}',
+          'radius': '1500', // 1.5km de raio
+          'key': apiKey,
+          'language': 'pt',
+          'type': 'point_of_interest', // Pontos de interesse
+        },
+      );
+      
+      final response = await http.get(url);
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK') {
+          final results = data['results'] as List;
+          
+          // Limpar marcadores antigos de POI
+          _markers.removeWhere(
+            (marker) => marker.markerId.value.startsWith('poi_')
+          );
+          
+          // Adicionar novos marcadores
+          for (var place in results) {
+            final placeId = place['place_id'] as String;
+            final name = place['name'] as String;
+            final lat = place['geometry']['location']['lat'] as double;
+            final lng = place['geometry']['location']['lng'] as double;
+            final position = LatLng(lat, lng);
+            
+            _markers.add(
+              Marker(
+                markerId: MarkerId('poi_$placeId'),
+                position: position,
+                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
+                infoWindow: InfoWindow(title: name),
+                onTap: () => _handlePoiMarkerTap(name, position),
+              ),
+            );
+          }
+          
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      print('Erro ao carregar pontos de interesse: $e');
+    }
+  }
+
+  void _handlePoiMarkerTap(String name, LatLng position) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text(name, style: const TextStyle(color: Colors.white)),
+        content: const Text(
+          'Deseja usar este local como origem ou destino?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() {
+                _originPoint = position;
+                _originController.text = name;
+              });
+              _updateMarkers();
+              if (_originPoint != null && _destinationPoint != null) {
+                _updateRoutePolyline();
+              }
+            },
+            child: const Text('Origem'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() {
+                _destinationPoint = position;
+                _destinationController.text = name;
+              });
+              _updateMarkers();
+              if (_originPoint != null && _destinationPoint != null) {
+                _updateRoutePolyline();
+              }
+            },
+            child: const Text('Destino'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _startSelectingOnMap(bool isOrigin) {
     setState(() {
       if (isOrigin) {
@@ -488,19 +719,19 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
         _isSelectingOrigin = false;
         _isSelectingDestination = true;
       }
-      
+
       _scrollController.animateTo(
         0.1,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
     });
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          isOrigin 
-              ? 'Toque no mapa para selecionar a origem' 
+          isOrigin
+              ? 'Toque no mapa para selecionar a origem'
               : 'Toque no mapa para selecionar o destino',
           style: const TextStyle(color: Colors.white),
         ),
@@ -523,42 +754,43 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
             ),
           ),
         );
-        
+
         const apiKey = 'AIzaSyCNlTXTSlKc2cCyGbWKqKCIkRN4JMiY1tQ';
-        
+
         final url = Uri.https(
           'maps.googleapis.com',
           '/maps/api/directions/json',
           {
             'origin': '${_originPoint!.latitude},${_originPoint!.longitude}',
-            'destination': '${_destinationPoint!.latitude},${_destinationPoint!.longitude}',
+            'destination':
+                '${_destinationPoint!.latitude},${_destinationPoint!.longitude}',
             'key': apiKey,
           },
         );
-        
+
         final response = await http.get(url);
-        
+
         // Close loading indicator
         Navigator.of(context, rootNavigator: true).pop();
-        
+
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
-          
+
           if (data['status'] == 'OK') {
             // Decode polyline points
             final points = data['routes'][0]['overview_polyline']['points'];
             final polylinePoints = PolylinePoints().decodePolyline(points);
-            
+
             final List<LatLng> polylineCoordinates = polylinePoints
                 .map((point) => LatLng(point.latitude, point.longitude))
                 .toList();
-            
+
             // Extrair informações de distância e duração
             final legs = data['routes'][0]['legs'][0];
             final distanceText = legs['distance']['text'];
             final distanceValue = legs['distance']['value'] / 1000; // em km
             final durationText = legs['duration']['text'];
-            
+
             setState(() {
               _polylines.clear();
               _polylines.add(
@@ -569,20 +801,22 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                   width: 5,
                 ),
               );
-              
+
               _routeDistanceKm = distanceValue;
               _routeDuration = durationText;
             });
-            
+
             // Adjust the camera to show both origin and destination
-            final LatLngBounds bounds = _calculateBounds([_originPoint!, _destinationPoint!]);
-            _mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 50));
+            final LatLngBounds bounds =
+                _calculateBounds([_originPoint!, _destinationPoint!]);
+            _mapController
+                ?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 50));
           }
         }
       } catch (e) {
         // Close loading indicator in case of error
         Navigator.of(context, rootNavigator: true).pop();
-        
+
         print('Error getting route: $e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -599,14 +833,14 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
     double maxLat = points[0].latitude;
     double minLng = points[0].longitude;
     double maxLng = points[0].longitude;
-    
+
     for (final point in points) {
       if (point.latitude < minLat) minLat = point.latitude;
       if (point.latitude > maxLat) maxLat = point.latitude;
       if (point.longitude < minLng) minLng = point.longitude;
       if (point.longitude > maxLng) maxLng = point.longitude;
     }
-    
+
     return LatLngBounds(
       southwest: LatLng(minLat, minLng),
       northeast: LatLng(maxLat, maxLng),
@@ -622,6 +856,22 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
         ),
       ),
     );
+  }
+
+  // Método para carregar POIs quando o mapa é movido
+  void _loadPoisOnCameraMoved() {
+    _mapController?.addListener(() async {
+      if (_mapController != null) {
+        final position = await _mapController!.getVisibleRegion();
+        final center = LatLng(
+          (position.northeast.latitude + position.southwest.latitude) / 2,
+          (position.northeast.longitude + position.southwest.longitude) / 2,
+        );
+
+        // Carregamos POIs sempre que a posição da câmera for alterada significativamente
+        _searchNearbyPlaces(center);
+      }
+    });
   }
 
   final List<Map<String, dynamic>> _transports = [
@@ -640,6 +890,11 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
   ];
 
   void _showConfirmationDialog() async {
+    // Validar dados antes de mostrar o diálogo de confirmação
+    if (!_validateOrderData()) {
+      return;
+    }
+
     final connectivityResult = await Connectivity().checkConnectivity();
     if (connectivityResult == ConnectivityResult.none) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -649,7 +904,8 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
               Icon(Icons.signal_wifi_off, color: Colors.white),
               SizedBox(width: 10),
               Expanded(
-                child: Text('Sem conexão com a internet. O pedido será salvo localmente e enviado quando houver conexão.'),
+                child: Text(
+                    'Sem conexão com a internet. O pedido será salvo localmente e enviado quando houver conexão.'),
               ),
             ],
           ),
@@ -662,13 +918,14 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
         ),
       );
     }
-    
+
     showDialog(
       context: context,
       barrierDismissible: true,
       builder: (BuildContext dialogContext) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           backgroundColor: Colors.transparent,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
@@ -702,17 +959,18 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                           style: TextButton.styleFrom(
                             foregroundColor: Colors.white70,
                             backgroundColor: const Color(0xFF2A2A2A),
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
                           ),
                           child: const Text('Não'),
                         ),
                         TextButton(
                           onPressed: () async {
                             Navigator.pop(dialogContext);
-                            
+
                             // Criar um contexto temporário para o diálogo de carregamento
                             BuildContext? loadingDialogContext;
-                            
+
                             // Mostrar indicador de carregamento
                             showDialog(
                               context: context,
@@ -721,26 +979,30 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                                 loadingDialogContext = ctx;
                                 return Center(
                                   child: CircularProgressIndicator(
-                                    valueColor: AlwaysStoppedAnimation<Color>(highlightColor),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        highlightColor),
                                   ),
                                 );
                               },
                             );
-                            
+
                             try {
                               // Verificar autenticação
-                              final currentUser = FirebaseAuth.instance.currentUser;
+                              final currentUser =
+                                  FirebaseAuth.instance.currentUser;
                               if (currentUser == null) {
                                 throw Exception("Usuário não autenticado");
                               }
-                              
+
                               // Criar objeto do pedido
                               String transportName = "Não selecionado";
                               if (_selectedTransportIndices.isNotEmpty) {
-                                int selectedIndex = _selectedTransportIndices.first;
-                                transportName = _transports[selectedIndex]['name'];
+                                int selectedIndex =
+                                    _selectedTransportIndices.first;
+                                transportName =
+                                    _transports[selectedIndex]['name'];
                               }
-                              
+
                               final newOrder = ds_order.Order(
                                 clientId: currentUser.uid,
                                 originAddress: _originController.text,
@@ -764,38 +1026,44 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                                   ds_order.StatusUpdate(
                                     status: ds_order.OrderStatus.pending,
                                     timestamp: DateTime.now(),
-                                    description: 'Pedido criado, aguardando entregador',
+                                    description:
+                                        'Pedido criado, aguardando entregador',
                                   ),
                                 ],
                               );
-                              
+
                               // Salvar no Firestore
-                              final orderId = await _orderService.createOrder(newOrder);
-                              
+                              final orderId =
+                                  await _orderService.createOrder(newOrder);
+
                               // Fechar o indicador de carregamento de forma segura
-                              if (loadingDialogContext != null && Navigator.canPop(loadingDialogContext!)) {
+                              if (loadingDialogContext != null &&
+                                  Navigator.canPop(loadingDialogContext!)) {
                                 Navigator.pop(loadingDialogContext!);
                               }
-                              
+
                               // Verificar se o widget ainda está montado
                               if (!mounted) return;
-                              
+
                               showLocalNotification(
                                 title: 'Pedido Criado',
-                                body: 'Procurando Entregador para a sua entrega',
+                                body:
+                                    'Procurando Entregador para a sua entrega',
                               );
-                              
+
                               // Navegar para a tela de acompanhamento
-                              context.go('/cliente/client_orderstate', extra: {'orderId': orderId});
+                              context.go('/cliente/client_orderstate',
+                                  extra: {'orderId': orderId});
                             } catch (e) {
                               // Fechar o indicador de carregamento de forma segura
-                              if (loadingDialogContext != null && Navigator.canPop(loadingDialogContext!)) {
+                              if (loadingDialogContext != null &&
+                                  Navigator.canPop(loadingDialogContext!)) {
                                 Navigator.pop(loadingDialogContext!);
                               }
-                              
+
                               // Verificar se o widget ainda está montado
                               if (!mounted) return;
-                              
+
                               // Mostrar erro
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -813,7 +1081,8 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                           style: TextButton.styleFrom(
                             foregroundColor: Colors.white,
                             backgroundColor: highlightColor,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
                           ),
                           child: const Text('Sim'),
                         ),
@@ -833,7 +1102,8 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
   double _calculateTotalPrice() {
     if (_routeDistanceKm != null && _selectedTransportIndices.isNotEmpty) {
       int selectedIndex = _selectedTransportIndices.first;
-      int pricePerKm = int.parse(_transports[selectedIndex]['price'].replaceAll(RegExp(r'[^0-9]'), ''));
+      int pricePerKm = int.parse(_transports[selectedIndex]['price']
+          .replaceAll(RegExp(r'[^0-9]'), ''));
       return _routeDistanceKm! * pricePerKm;
     }
     return 0.0;
@@ -841,6 +1111,11 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
 
   // Bottom sheet de resumo atualizado
   void _showOrderSummarySheet() {
+    // Validar dados antes de mostrar a folha de resumo
+    if (!_validateOrderData()) {
+      return;
+    }
+
     String transportName = "Não selecionado";
     String transportPrice = "0 MT/km";
     if (_selectedTransportIndices.isNotEmpty) {
@@ -848,16 +1123,17 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
       transportName = _transports[selectedIndex]['name'];
       transportPrice = _transports[selectedIndex]['price'];
     }
-    
+
     // Calcular valor estimado
     String valorEstimado = "Calcular rota primeiro";
     if (_routeDistanceKm != null && _selectedTransportIndices.isNotEmpty) {
       int selectedIndex = _selectedTransportIndices.first;
-      int pricePerKm = int.parse(_transports[selectedIndex]['price'].replaceAll(RegExp(r'[^0-9]'), ''));
+      int pricePerKm = int.parse(_transports[selectedIndex]['price']
+          .replaceAll(RegExp(r'[^0-9]'), ''));
       int totalValue = (_routeDistanceKm! * pricePerKm).round();
       valorEstimado = "$totalValue MT";
     }
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -882,18 +1158,42 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                 ),
               ),
             ),
-            _buildBottomSheetRow(Symbols.location_on, 'Origem', _originController.text.isNotEmpty ? _originController.text : 'Não especificado'),
-            _buildBottomSheetRow(Symbols.flag, 'Destino', _destinationController.text.isNotEmpty ? _destinationController.text : 'Não especificado'),
-            _buildBottomSheetRow(Symbols.local_shipping, 'Transporte', transportName),
-            _buildBottomSheetRow(Symbols.straighten, 'Distância', _routeDistanceKm != null ? "${_routeDistanceKm!.toStringAsFixed(1)} km" : "Calcular rota primeiro"),
-            _buildBottomSheetRow(Symbols.timer, 'Tempo Estimado', _routeDuration ?? "Calcular rota primeiro"),
-            _buildBottomSheetRow(Symbols.attach_money, 'Valor Estimado', valorEstimado),
-            _buildBottomSheetRow(Symbols.notes, 'Observações', _observationsController.text.isNotEmpty ? _observationsController.text : 'Sem observações'),
+            _buildBottomSheetRow(
+                Symbols.location_on,
+                'Origem',
+                _originController.text.isNotEmpty
+                    ? _originController.text
+                    : 'Não especificado'),
+            _buildBottomSheetRow(
+                Symbols.flag,
+                'Destino',
+                _destinationController.text.isNotEmpty
+                    ? _destinationController.text
+                    : 'Não especificado'),
+            _buildBottomSheetRow(
+                Symbols.local_shipping, 'Transporte', transportName),
+            _buildBottomSheetRow(
+                Symbols.straighten,
+                'Distância',
+                _routeDistanceKm != null
+                    ? "${_routeDistanceKm!.toStringAsFixed(1)} km"
+                    : "Calcular rota primeiro"),
+            _buildBottomSheetRow(Symbols.timer, 'Tempo Estimado',
+                _routeDuration ?? "Calcular rota primeiro"),
+            _buildBottomSheetRow(
+                Symbols.attach_money, 'Valor Estimado', valorEstimado),
+            _buildBottomSheetRow(
+                Symbols.notes,
+                'Observações',
+                _observationsController.text.isNotEmpty
+                    ? _observationsController.text
+                    : 'Sem observações'),
             const SizedBox(height: 24),
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: highlightColor,
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                 ),
@@ -935,9 +1235,12 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                Text(label,
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 12)),
                 const SizedBox(height: 2),
-                Text(value, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                Text(value,
+                    style: const TextStyle(color: Colors.white, fontSize: 14)),
               ],
             ),
           ),
@@ -948,318 +1251,355 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Google Maps
-          SizedBox.expand(
-            child: GoogleMap(
-              onMapCreated: (GoogleMapController controller) {
-                _mapController = controller;
-                _mapController!.setMapStyle(_darkMapStyle);
-                
-                // Não precisamos mais buscar POIs aqui
-              },
-              initialCameraPosition: const CameraPosition(
-                target: LatLng(-25.9692, 32.5732), // Maputo, Moçambique
-                zoom: 13.0,
-              ),
-              mapType: MapType.normal,
-              myLocationEnabled: true,
-              myLocationButtonEnabled: true,
-              zoomControlsEnabled: true,
-              compassEnabled: true,
-              markers: _markers,
-              polylines: _polylines,
-              onTap: _handleMapTap,
-            ),
-          ),
-          
-          // App Bar
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: AppBar(
-                backgroundColor: Colors.black.withOpacity(0.5),
-                elevation: 0,
-                title: const Text(
-                  'Criar Pedido',
-                  style: TextStyle(
-                    fontFamily: 'SpaceGrotesk',
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
+    return BackHandler(
+        alternativeRoute: '/cliente/client_home',
+        child: Scaffold(
+          body: Stack(
+            children: [
+              // Google Maps
+              SizedBox.expand(
+                child: GoogleMap(
+                  onMapCreated: (GoogleMapController controller) {
+                  _mapController = controller;
+                  _mapController!.setMapStyle(_darkMapStyle);
+                  // Não precisamos mais buscar POIs aqui
+                },
+                initialCameraPosition: const CameraPosition(
+                  target: LatLng(-25.9692, 32.5732), // Maputo, Moçambique
+                  zoom: 13.0,
                 ),
-                leading: IconButton(
-                  icon: const Icon(Symbols.arrow_back, color: Colors.white),
-                  onPressed: () => context.go('/cliente/client_home'),
+                mapType: MapType.normal,
+                myLocationEnabled: true,
+                myLocationButtonEnabled: true,
+                zoomControlsEnabled: true,
+                compassEnabled: true,
+                markers: _markers,
+                polylines: _polylines,
+                onTap: _handleMapTap,
                 ),
               ),
-            ),
-          ),
-          
-          // Mensagem de instrução quando estiver selecionando no mapa
-          if (_isSelectingOrigin || _isSelectingDestination)
-            Positioned(
-              top: 100,
-              left: 0,
-              right: 0,
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 20),
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  _isSelectingOrigin
-                      ? 'Toque no mapa para marcar o ponto de origem'
-                      : 'Toque no mapa para marcar o ponto de destino',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
+
+              // App Bar
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: AppBar(
+                    backgroundColor: Colors.black.withOpacity(0.5),
+                    elevation: 0,
+                    title: const Text(
+                      'Criar Pedido',
+                      style: TextStyle(
+                        fontFamily: 'SpaceGrotesk',
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                    leading: IconButton(
+                      icon: const Icon(Symbols.arrow_back, color: Colors.white),
+                      onPressed: () => context.go('/cliente/client_home'),
+                    ),
                   ),
                 ),
               ),
-            ),
-          
-          // Bottom sheet com limites adequados
-          if (_isBottomSheetOpen)
-            DraggableScrollableSheet(
-              initialChildSize: 0.5,
-              minChildSize: 0.1,
-              maxChildSize: 0.9,
-              snap: true,
-              snapSizes: const [0.1, 0.5, 0.9],
-              controller: _scrollController,
-              builder: (context, scrollController) {
-                // Monitorar posição do bottom sheet
-                _scrollController.addListener(() {
-                  if (_scrollController.size <= 0.15 && _isBottomSheetOpen) {
-                    setState(() {
-                      _isBottomSheetOpen = false;
-                    });
-                  }
-                });
-                
-                return Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                    border: Border.all(color: highlightColor.withOpacity(0.2)),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                    child: SingleChildScrollView(
-                      controller: scrollController,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 2, 24, 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Center(
-                              child: Container(
-                                width: 40,
-                                height: 4,
-                                margin: const EdgeInsets.only(top: 8, bottom: 24),
-                                decoration: BoxDecoration(
-                                  color: highlightColor,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                            ),
-                            const Padding(
-                              padding: EdgeInsets.only(bottom: 16),
-                              child: Text(
-                                'Dados do Pedido',
-                                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            
-                            // Campo de origem com sugestões e botão de localização atual
-                            _buildCustomAutocompleteField(
-                              icon: Symbols.location_on,
-                              label: 'Origem',
-                              placeholder: 'Ex: Baia mall, Maputo',
-                              controller: _originController,
-                              isOrigin: true,
-                              onTextChanged: (text) => _searchPlaces(text, true),
-                              onMapSelect: () => _startSelectingOnMap(true),
-                              onCurrentLocation: () => _setCurrentLocation(true),
-                              showSuggestions: _showOriginSuggestions,
-                              suggestions: _originSuggestions,
-                              onSuggestionSelected: (suggestion) => _selectPlace(suggestion, true),
-                            ),
-                            
-                            const SizedBox(height: 16),
-                            
-                            // Campo de destino com sugestões e botão de localização atual
-                            _buildCustomAutocompleteField(
-                              icon: Symbols.flag,
-                              label: 'Destino',
-                              placeholder: 'Ex: Shoprite, Matola',
-                              controller: _destinationController,
-                              isOrigin: false,
-                              onTextChanged: (text) => _searchPlaces(text, false),
-                              onMapSelect: () => _startSelectingOnMap(false),
-                              onCurrentLocation: () => _setCurrentLocation(false),
-                              showSuggestions: _showDestinationSuggestions,
-                              suggestions: _destinationSuggestions,
-                              onSuggestionSelected: (suggestion) => _selectPlace(suggestion, false),
-                            ),
-                            
-                            const SizedBox(height: 16),
-                            _buildLabeledInput(Symbols.notes, 'Observações', 'Informações adicionais', false, 
-                                multiline: true, controller: _observationsController),
-                            const SizedBox(height: 24),
-                            const Text(
-                              'Tipo de Transporte',
-                              style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              height: 160,
-                              child: ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: _transports.length,
-                                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                                itemBuilder: (context, index) {
-                                  final transport = _transports[index];
-                                  final selected = _selectedTransportIndices.contains(index);
-                                  return GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        // Single selection mode
-                                        _selectedTransportIndices.clear();
-                                        _selectedTransportIndices.add(index);
-                                      });
-                                    },
-                                    child: Container(
-                                      width: 240,
-                                      padding: const EdgeInsets.all(16),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF2A2A2A),
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(
-                                          color: selected ? highlightColor : Colors.transparent,
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child: Stack(
-                                        children: [
-                                          Positioned(
-                                            right: 0,
-                                            bottom: 0,
-                                            child: Image.asset(
-                                              transport['image'],
-                                              width: 120,
-                                              height: 120,
-                                              fit: BoxFit.contain,
-                                            ),
-                                          ),
-                                          Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                transport['name'],
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                transport['description'],
-                                                style: const TextStyle(
-                                                  color: Colors.white54,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              const Text(
-                                                'Preço por KM:',
-                                                style: TextStyle(color: Colors.white54, fontSize: 12),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                transport['price'],
-                                                style: const TextStyle(
-                                                  color: Colors.white70,
-                                                  fontStyle: FontStyle.italic,
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            FilledButton(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: highlightColor,
-                                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                              ),
-                              onPressed: _showOrderSummarySheet,
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Criar Pedido',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  Icon(
-                                    Symbols.send_rounded,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+
+              // Mensagem de instrução quando estiver selecionando no mapa
+              if (_isSelectingOrigin || _isSelectingDestination)
+                Positioned(
+                  top: 100,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _isSelectingOrigin
+                          ? 'Toque no mapa para marcar o ponto de origem'
+                          : 'Toque no mapa para marcar o ponto de destino',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
                       ),
                     ),
                   ),
-                );
-              },
-            ),
-          
-          // Botão flutuante para reabrir o bottom sheet
-          if (!_isBottomSheetOpen)
-            Positioned(
-              bottom: 24,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: FloatingActionButton.extended(
-                  onPressed: () => setState(() => _isBottomSheetOpen = true),
-                  backgroundColor: highlightColor,
-                  icon: const Icon(Symbols.edit_document, color: Colors.white),
-                  label: const Text(
-                    'Criar Pedido',
-                    style: TextStyle(color: Colors.white),
-                  ),
                 ),
-              ),
-            )
-        ],
-      ),
-    );
+
+              // Bottom sheet com limites adequados
+              if (_isBottomSheetOpen)
+                DraggableScrollableSheet(
+                  initialChildSize: 0.5,
+                  minChildSize: 0.1,
+                  maxChildSize: 0.9,
+                  snap: true,
+                  snapSizes: const [0.1, 0.5, 0.9],
+                  controller: _scrollController,
+                  builder: (context, scrollController) {
+                    // Monitorar posição do bottom sheet
+                    _scrollController.addListener(() {
+                      if (_scrollController.size <= 0.15 &&
+                          _isBottomSheetOpen) {
+                        setState(() {
+                          _isBottomSheetOpen = false;
+                        });
+                      }
+                    });
+
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A1A),
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(24)),
+                        border:
+                            Border.all(color: highlightColor.withOpacity(0.2)),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(24)),
+                        child: SingleChildScrollView(
+                          controller: scrollController,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 2, 24, 24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Center(
+                                  child: Container(
+                                    width: 40,
+                                    height: 4,
+                                    margin: const EdgeInsets.only(
+                                        top: 8, bottom: 24),
+                                    decoration: BoxDecoration(
+                                      color: highlightColor,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                ),
+                                const Padding(
+                                  padding: EdgeInsets.only(bottom: 16),
+                                  child: Text(
+                                    'Dados do Pedido',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+
+                                // Campo de origem com sugestões e botão de localização atual
+                                _buildCustomAutocompleteField(
+                                  icon: Symbols.location_on,
+                                  label: 'Origem',
+                                  placeholder: 'Ex: Baia mall, Maputo',
+                                  controller: _originController,
+                                  isOrigin: true,
+                                  onTextChanged: (text) =>
+                                      _searchPlaces(text, true),
+                                  onMapSelect: () => _startSelectingOnMap(true),
+                                  onCurrentLocation: () =>
+                                      _setCurrentLocation(true),
+                                  showSuggestions: _showOriginSuggestions,
+                                  suggestions: _originSuggestions,
+                                  onSuggestionSelected: (suggestion) =>
+                                      _selectPlace(suggestion, true),
+                                ),
+
+                                const SizedBox(height: 16),
+
+                                // Campo de destino com sugestões e botão de localização atual
+                                _buildCustomAutocompleteField(
+                                  icon: Symbols.flag,
+                                  label: 'Destino',
+                                  placeholder: 'Ex: Shoprite, Matola',
+                                  controller: _destinationController,
+                                  isOrigin: false,
+                                  onTextChanged: (text) =>
+                                      _searchPlaces(text, false),
+                                  onMapSelect: () =>
+                                      _startSelectingOnMap(false),
+                                  onCurrentLocation: () =>
+                                      _setCurrentLocation(false),
+                                  showSuggestions: _showDestinationSuggestions,
+                                  suggestions: _destinationSuggestions,
+                                  onSuggestionSelected: (suggestion) =>
+                                      _selectPlace(suggestion, false),
+                                ),
+
+                                const SizedBox(height: 16),
+                                _buildLabeledInput(Symbols.notes, 'Observações',
+                                    'Informações adicionais', false,
+                                    multiline: true,
+                                    controller: _observationsController),
+                                const SizedBox(height: 24),
+                                const Text(
+                                  'Tipo de Transporte',
+                                  style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: 160,
+                                  child: ListView.separated(
+                                    scrollDirection: Axis.horizontal,
+                                    itemCount: _transports.length,
+                                    separatorBuilder: (_, __) =>
+                                        const SizedBox(width: 12),
+                                    itemBuilder: (context, index) {
+                                      final transport = _transports[index];
+                                      final selected = _selectedTransportIndices
+                                          .contains(index);
+                                      return GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            // Single selection mode
+                                            _selectedTransportIndices.clear();
+                                            _selectedTransportIndices
+                                                .add(index);
+                                          });
+                                        },
+                                        child: Container(
+                                          width: 240,
+                                          padding: const EdgeInsets.all(16),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF2A2A2A),
+                                            borderRadius:
+                                                BorderRadius.circular(16),
+                                            border: Border.all(
+                                              color: selected
+                                                  ? highlightColor
+                                                  : Colors.transparent,
+                                              width: 2,
+                                            ),
+                                          ),
+                                          child: Stack(
+                                            children: [
+                                              Positioned(
+                                                right: 0,
+                                                bottom: 0,
+                                                child: Image.asset(
+                                                  transport['image'],
+                                                  width: 120,
+                                                  height: 120,
+                                                  fit: BoxFit.contain,
+                                                ),
+                                              ),
+                                              Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    transport['name'],
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 16,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    transport['description'],
+                                                    style: const TextStyle(
+                                                      color: Colors.white54,
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  const Text(
+                                                    'Preço por KM:',
+                                                    style: TextStyle(
+                                                        color: Colors.white54,
+                                                        fontSize: 12),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    transport['price'],
+                                                    style: const TextStyle(
+                                                      color: Colors.white70,
+                                                      fontStyle:
+                                                          FontStyle.italic,
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: highlightColor,
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 16, horizontal: 20),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                  ),
+                                  onPressed: _showOrderSummarySheet,
+                                  child: const Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Criar Pedido',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      Icon(
+                                        Symbols.send_rounded,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
+              // Botão flutuante para reabrir o bottom sheet
+              if (!_isBottomSheetOpen)
+                Positioned(
+                  bottom: 24,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: FloatingActionButton.extended(
+                      onPressed: () =>
+                          setState(() => _isBottomSheetOpen = true),
+                      backgroundColor: highlightColor,
+                      icon: const Icon(Symbols.edit_document,
+                          color: Colors.white),
+                      label: const Text(
+                        'Criar Pedido',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                )
+            ],
+          ),
+        ));
   }
 
   // Widget de campo de autocomplete personalizado com botão de localização atual
@@ -1288,21 +1628,29 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                  Text(label,
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 14)),
                   Row(
                     children: [
                       TextButton.icon(
                         onPressed: onCurrentLocation,
-                        icon: Icon(Symbols.my_location, color: highlightColor, size: 18),
-                        label: const Text('Atual', style: TextStyle(color: Colors.white70)),
-                        style: TextButton.styleFrom(minimumSize: Size.zero, padding: EdgeInsets.zero),
+                        icon: Icon(Symbols.my_location,
+                            color: highlightColor, size: 18),
+                        label: const Text('Atual',
+                            style: TextStyle(color: Colors.white70)),
+                        style: TextButton.styleFrom(
+                            minimumSize: Size.zero, padding: EdgeInsets.zero),
                       ),
                       const SizedBox(width: 12),
                       TextButton.icon(
                         onPressed: onMapSelect,
-                        icon: Icon(Symbols.map, color: highlightColor, size: 18),
-                        label: const Text('No mapa', style: TextStyle(color: Colors.white70)),
-                        style: TextButton.styleFrom(minimumSize: Size.zero, padding: EdgeInsets.zero),
+                        icon:
+                            Icon(Symbols.map, color: highlightColor, size: 18),
+                        label: const Text('No mapa',
+                            style: TextStyle(color: Colors.white70)),
+                        style: TextButton.styleFrom(
+                            minimumSize: Size.zero, padding: EdgeInsets.zero),
                       ),
                     ],
                   ),
@@ -1319,14 +1667,16 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                   hintStyle: const TextStyle(color: Colors.white24),
                   filled: true,
                   fillColor: const Color(0xFF2A2A2A),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
                   ),
                   suffixIcon: controller.text.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Symbols.clear, color: Colors.white54),
+                          icon:
+                              const Icon(Symbols.clear, color: Colors.white54),
                           onPressed: () {
                             setState(() {
                               controller.clear();
@@ -1345,7 +1695,7 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                       : null,
                 ),
               ),
-              
+
               // Lista de sugestões
               if (showSuggestions)
                 Container(
@@ -1371,12 +1721,16 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                         dense: true,
                         title: Text(
                           suggestion['description'] ?? '',
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 14),
                         ),
-                        subtitle: suggestion['structured_formatting'] != null 
+                        subtitle: suggestion['structured_formatting'] != null
                             ? Text(
-                                suggestion['structured_formatting']['secondary_text'] ?? '',
-                                style: const TextStyle(color: Colors.white54, fontSize: 12),
+                                suggestion['structured_formatting']
+                                        ['secondary_text'] ??
+                                    '',
+                                style: const TextStyle(
+                                    color: Colors.white54, fontSize: 12),
                               )
                             : null,
                         leading: Icon(icon, color: highlightColor, size: 18),
@@ -1395,11 +1749,8 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
   }
 
   Widget _buildLabeledInput(
-      IconData icon, 
-      String label, 
-      String placeholder, 
-      bool showMapButton, 
-      {bool multiline = false, 
+      IconData icon, String label, String placeholder, bool showMapButton,
+      {bool multiline = false,
       TextEditingController? controller,
       VoidCallback? onMapSelect}) {
     return Row(
@@ -1414,13 +1765,17 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                  Text(label,
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 14)),
                   if (showMapButton)
                     TextButton.icon(
                       onPressed: onMapSelect,
                       icon: Icon(Symbols.map, color: highlightColor, size: 18),
-                      label: const Text('Selecionar no mapa', style: TextStyle(color: Colors.white70)),
-                      style: TextButton.styleFrom(minimumSize: Size.zero, padding: EdgeInsets.zero),
+                      label: const Text('Selecionar no mapa',
+                          style: TextStyle(color: Colors.white70)),
+                      style: TextButton.styleFrom(
+                          minimumSize: Size.zero, padding: EdgeInsets.zero),
                     ),
                 ],
               ),
@@ -1434,7 +1789,8 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                   hintStyle: const TextStyle(color: Colors.white24),
                   filled: true,
                   fillColor: const Color(0xFF2A2A2A),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -1447,4 +1803,8 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
       ],
     );
   }
+}
+
+extension on GoogleMapController? {
+  void addListener(Future<Null> Function() param0) {}
 }

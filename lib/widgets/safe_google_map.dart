@@ -13,7 +13,7 @@ class SafeGoogleMap extends StatelessWidget {
   final bool mapToolbarEnabled;
   final Color loadingIndicatorColor;
   final String mapStyle;
-  
+
   const SafeGoogleMap({
     super.key,
     required this.initialCameraPosition,
@@ -23,7 +23,7 @@ class SafeGoogleMap extends StatelessWidget {
     this.myLocationEnabled = false,
     this.zoomControlsEnabled = false,
     this.mapToolbarEnabled = false,
-    this.loadingIndicatorColor = Colors.orange,
+    this.loadingIndicatorColor = const Color(0xFFFF6A00),
     this.mapStyle = '',
   });
 
@@ -36,7 +36,7 @@ class SafeGoogleMap extends StatelessWidget {
           width: double.infinity,
           height: double.infinity,
         ),
-        
+
         // Envolvendo o GoogleMap em um try-catch visual
         Builder(
           builder: (context) {
@@ -71,7 +71,8 @@ class SafeGoogleMap extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.map_outlined, size: 48, color: Colors.grey.shade400),
+                    Icon(Icons.map_outlined,
+                        size: 48, color: Colors.grey.shade400),
                     const SizedBox(height: 8),
                     const Text(
                       'Não foi possível carregar o mapa',

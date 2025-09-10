@@ -9,6 +9,8 @@ import 'package:ds_delivery/services/firestore_service.dart';
 import 'package:ds_delivery/services/storage_service.dart';
 import 'package:ds_delivery/services/user_role_storage.dart';
 import 'package:ds_delivery/services/auth_notifier.dart';
+import 'package:ds_delivery/services/auth_role_verification.dart';
+import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class DeliveryAuthPage extends StatefulWidget {
   const DeliveryAuthPage({super.key});
@@ -155,9 +157,9 @@ class _DeliveryAuthPageState extends State<DeliveryAuthPage> with SingleTickerPr
     }
   }
 
-  Future<void> _loginDelivery() async {
+  void _loginDelivery() async {
     if (_isLoggingIn) return;
-
+    
     setState(() {
       _isLoggingIn = true;
     });
@@ -167,16 +169,10 @@ class _DeliveryAuthPageState extends State<DeliveryAuthPage> with SingleTickerPr
         _emailLoginController.text.trim(),
         _passwordLoginController.text.trim(),
       );
-
+      
       if (user != null) {
-        await saveUserRole('entregador');
-        authNotifier.notify();
-        context.go('/entregador/delivery_home');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Login realizado com sucesso!")),
-          );
-        }
+        // Verifica se o usuário tem os dados necessários para a função de cliente
+        await RoleVerificationService().verifyRoleAccess(context, 'entregador');
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -207,7 +203,9 @@ class _DeliveryAuthPageState extends State<DeliveryAuthPage> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return BackHandler(
+    alternativeRoute: '/account_selection',
+    child: Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F0F0F),
@@ -357,6 +355,7 @@ class _DeliveryAuthPageState extends State<DeliveryAuthPage> with SingleTickerPr
           ),
         ),
       ),
+    )
     );
   }
 }

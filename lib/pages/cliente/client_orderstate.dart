@@ -12,6 +12,7 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import '../../services/notifications_service.dart';
 import '../../services/order_service.dart';
 import '../../models/order_model.dart' as ds_order;
+import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class ClientOrderStatePage extends StatefulWidget {
   final String orderId;
@@ -410,7 +411,9 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
   Widget build(BuildContext context) {
     super.build(context);
     
-    return Scaffold(
+    return BackHandler(
+    alternativeRoute: '/cliente/client_home',
+    child: Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
       appBar: AppBar(
         backgroundColor: Colors.black.withOpacity(0.6),
@@ -435,6 +438,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
         : _hasError 
           ? _buildErrorView()
           : _buildMainContent(),
+    )
     );
   }
   
@@ -1199,7 +1203,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
     return const SizedBox.shrink();
   }
 
-  void _showConfirmationDialog(
+    void _showConfirmationDialog(
     BuildContext context, {
     required String title,
     required String message,
@@ -1209,6 +1213,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
   }) {
     showDialog(
       context: context,
+      barrierDismissible: false, // Força o usuário a escolher uma opção
       builder: (context) => Dialog(
         backgroundColor: Colors.black.withOpacity(0.75),
         shape: RoundedRectangleBorder(
@@ -1258,12 +1263,12 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                       child: const Text('Não', style: TextStyle(color: Colors.white)),
                     ),
                     FilledButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        if (confirmAction != null) {
-                          confirmAction();
-                        }
-                      },
+                      onPressed: confirmAction == null 
+                        ? null  // Desabilitar se não houver ação
+                        : () {
+                          Navigator.pop(context); // Fechar diálogo
+                          Future.microtask(() => confirmAction()); // Executar ação após fechar diálogo
+                        },
                       style: FilledButton.styleFrom(
                         backgroundColor: isCancel ? Colors.red : highlightColor,
                         shape: RoundedRectangleBorder(

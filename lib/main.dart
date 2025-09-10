@@ -6,6 +6,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:logging/logging.dart';
 import 'firebase_options.dart';
+import 'services/connectivity_service.dart';
+import 'widgets/network_alert.dart';
 import 'router.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -57,6 +59,9 @@ Future<void> main() async {
 
   await initializeUserRole();
 
+  final connectivityService = ConnectivityService();
+  await connectivityService.initialize();
+
   runApp(const MyApp());
 }
 
@@ -99,6 +104,11 @@ class _MyAppState extends State<MyApp> {
       title: 'DS Delivery',
       theme: ThemeData(primarySwatch: Colors.blue),
       routerConfig: appRouter, // <- usa o GoRouter aqui
+      builder: (context, child) {
+        return NetworkAlertWidget(
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
     );
   }
 }
