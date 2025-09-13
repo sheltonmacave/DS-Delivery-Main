@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/material_symbols_icons.dart';
 
 class OrderCountdownWidget extends StatefulWidget {
   final DateTime targetTime;
@@ -76,7 +77,7 @@ class _OrderCountdownWidgetState extends State<OrderCountdownWidget> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            _isComplete ? Icons.check_circle : Icons.timer,
+            _isComplete ? Symbols.check_circle : Symbols.timer,
             size: 16,
             color: _isComplete ? Colors.green : const Color(0xFFFF6A00),
           ),

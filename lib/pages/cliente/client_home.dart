@@ -3,12 +3,12 @@ import 'package:material_symbols_icons/material_symbols_icons.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:video_player/video_player.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:async';
 import 'dart:math';
 import '../../services/order_service.dart';
 import '../../models/order_model.dart' as ds_order;
 import 'package:ds_delivery/wrappers/back_handler.dart';
+import '../../widgets/feedback_bottom_sheet.dart';
 
 class ClientHomePage extends StatefulWidget {
   const ClientHomePage({super.key});
@@ -22,11 +22,12 @@ class _ClientHomePageState extends State<ClientHomePage> {
   late Timer _timer;
   bool _showGreeting = true;
   bool _showUI = true;
+  bool _showActiveOrderOverlay = true;
   int _currentIndex = 1;
   GoogleMapController? _mapController;
   final OrderService _orderService = OrderService();
   ds_order.Order? _activeOrder;
-  final bool _isLoadingOrder = true;
+  bool _isLoadingOrder = true;
 
   final Color highlightColor = const Color(0xFFFF6A00);
 
@@ -161,6 +162,23 @@ class _ClientHomePageState extends State<ClientHomePage> {
           });
         }
       });
+
+      // Iniciar a escuta para pedidos ativos
+      _orderService.getClientActiveOrder().listen((order) {
+        if (mounted) {
+          setState(() {
+            _activeOrder = order;
+            _isLoadingOrder = false;
+          });
+        }
+      }, onError: (error) {
+        debugPrint('Erro ao buscar pedido ativo: $error');
+        if (mounted) {
+          setState(() {
+            _isLoadingOrder = false;
+          });
+        }
+      });
     });
   }
 
@@ -267,12 +285,18 @@ class _ClientHomePageState extends State<ClientHomePage> {
       decoration: BoxDecoration(
         color: const Color(0xFF232323),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: highlightColor),
+        border: Border.all(color: highlightColor, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: highlightColor.withOpacity(0.3),
-            blurRadius: 8,
-            spreadRadius: 0,
+            color: highlightColor.withOpacity(0.4),
+            blurRadius: 15,
+            spreadRadius: 1,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.5),
+            blurRadius: 10,
+            spreadRadius: 2,
           ),
         ],
       ),
@@ -280,45 +304,97 @@ class _ClientHomePageState extends State<ClientHomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Cabeçalho
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              color: Colors.black26,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
-            ),
-            child: Row(
+          Stack(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: const BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: highlightColor.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(statusIcon, color: highlightColor),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Pedido em Andamento',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Text(
+                            statusText,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Botão para fechar o card
+              Positioned(
+                top: 4,
+                right: 4,
+                child: IconButton(
+                  icon: const Icon(Symbols.close,
+                      color: Colors.white60, size: 20),
+                  onPressed: () {
+                    // Temporariamente esconde o card
+                    setState(() {
+                      _showActiveOrderOverlay = false;
+                    });
+
+                    // Mostra um snackbar informando que o card está oculto temporariamente
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text(
+                            'Card minimizado. O pedido continua ativo.'),
+                        action: SnackBarAction(
+                          label: 'Mostrar',
+                          onPressed: () {
+                            setState(() {
+                              _showActiveOrderOverlay = true;
+                            });
+                          },
+                        ),
+                        duration: const Duration(seconds: 5),
+                      ),
+                    );
+                  },
+                  tooltip: 'Ocultar',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 30,
+                    minHeight: 30,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: highlightColor.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(statusIcon, color: highlightColor),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Pedido em Andamento',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        statusText,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                // ID do pedido
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -335,16 +411,9 @@ class _ClientHomePageState extends State<ClientHomePage> {
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
 
-          // Informações do pedido
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+                const SizedBox(height: 16),
+
                 // Endereços
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -471,6 +540,8 @@ class _ClientHomePageState extends State<ClientHomePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // Removido a exibição do card para ser mostrado como overlay
+
                         const Text(
                           'Chame Um Motorista Onde Estiveres!',
                           style: TextStyle(
@@ -485,7 +556,21 @@ class _ClientHomePageState extends State<ClientHomePage> {
 
                         FilledButton(
                           onPressed: _activeOrder != null
-                              ? null // Desabilita se houver pedido ativo
+                              ? () {
+                                  // Se há um pedido ativo, mostramos o card novamente
+                                  setState(() {
+                                    _showActiveOrderOverlay = true;
+                                  });
+
+                                  // Informamos ao usuário que não pode criar novos pedidos
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                          'Você já tem um pedido em andamento. Aguarde sua conclusão antes de criar um novo.'),
+                                      duration: Duration(seconds: 3),
+                                    ),
+                                  );
+                                }
                               : () {
                                   context.go('/cliente/client_createorder');
                                 },
@@ -519,17 +604,7 @@ class _ClientHomePageState extends State<ClientHomePage> {
                           ),
                         ),
 
-                        // Mostrar card de pedido ativo se existir
-                        if (_isLoadingOrder)
-                          Center(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 24),
-                              child: CircularProgressIndicator(
-                                  color: highlightColor),
-                            ),
-                          )
-                        else if (_activeOrder != null)
-                          _buildActiveOrderCard(),
+                        // Placeholder para o card que agora é exibido como overlay
 
                         const SizedBox(height: 16),
                         AspectRatio(
@@ -547,13 +622,106 @@ class _ClientHomePageState extends State<ClientHomePage> {
                                   ),
                           ),
                         ),
+
+                        // Botão de feedback/sugestões
+                        const SizedBox(height: 20),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            FeedbackBottomSheet.show(context);
+                          },
+                          icon: Icon(Symbols.lightbulb, color: highlightColor),
+                          label: const Text(
+                            'Enviar Sugestão de Melhoria',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: highlightColor),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
               ),
+              // Card de pedido ativo como overlay
+              if (!_isLoadingOrder &&
+                  _activeOrder != null &&
+                  _showActiveOrderOverlay)
+                Positioned(
+                  top: 100,
+                  left: horizontalMargin,
+                  right: horizontalMargin,
+                  child: Hero(
+                    tag: 'active_order_${_activeOrder!.id}',
+                    child: GestureDetector(
+                      onTap: () {
+                        context.go('/cliente/client_orderstate',
+                            extra: {'orderId': _activeOrder!.id});
+                      },
+                      child: Material(
+                        color: Colors.transparent,
+                        elevation: 16,
+                        shadowColor: highlightColor.withOpacity(0.3),
+                        child: _buildActiveOrderCard(),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Loading indicator como overlay
+              if (_isLoadingOrder)
+                Positioned(
+                  top: 100,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF232323),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 8,
+                            spreadRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: const CircularProgressIndicator(strokeWidth: 2.0),
+                    ),
+                  ),
+                ),
+
+              // Botão para mostrar pedido ativo
+              if (!_isLoadingOrder &&
+                  _activeOrder != null &&
+                  !_showActiveOrderOverlay)
+                Positioned(
+                  right: horizontalMargin,
+                  bottom: 140, // Reposicionado acima da navbar
+                  child: FloatingActionButton(
+                    mini: true,
+                    backgroundColor: highlightColor,
+                    onPressed: () {
+                      setState(() {
+                        _showActiveOrderOverlay = true;
+                      });
+                    },
+                    child:
+                        const Icon(Symbols.local_shipping, color: Colors.white),
+                  ),
+                ),
+
               Positioned(
-                bottom: 20,
+                bottom: 30, // Aumentado para evitar overflow
                 left: horizontalMargin,
                 right: horizontalMargin,
                 child: AnimatedOpacity(

@@ -11,7 +11,6 @@ import 'package:ds_delivery/services/user_role_storage.dart';
 import 'package:ds_delivery/services/auth_notifier.dart';
 import 'package:ds_delivery/services/auth_role_verification.dart';
 import 'package:ds_delivery/wrappers/back_handler.dart';
-import 'package:ds_delivery/utils/network_utils.dart';
 // Ensure that the file 'lib/wrappers/back_handler.dart' exists and exports 'BackHandler'.
 
 void main() {

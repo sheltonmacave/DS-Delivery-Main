@@ -6,7 +6,7 @@ import 'package:material_symbols_icons/material_symbols_icons.dart';
 class NetworkAlertWidget extends StatefulWidget {
   final Widget child;
 
-  const NetworkAlertWidget({Key? key, required this.child}) : super(key: key);
+  const NetworkAlertWidget({super.key, required this.child});
 
   @override
   _NetworkAlertWidgetState createState() => _NetworkAlertWidgetState();
@@ -68,9 +68,9 @@ class _NetworkAlertWidgetState extends State<NetworkAlertWidget> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
+                      const Expanded(
                         child: Row(
-                          children: const [
+                          children: [
                             Icon(Symbols.wifi_off, color: Colors.white),
                             SizedBox(width: 8),
                             Expanded(

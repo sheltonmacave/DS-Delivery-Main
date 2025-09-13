@@ -174,35 +174,40 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
     // Validar origem
     if (_originPoint == null || _originController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor, selecione um ponto de origem')),
+        const SnackBar(
+            content: Text('Por favor, selecione um ponto de origem')),
       );
       return false;
     }
-    
+
     // Validar destino
     if (_destinationPoint == null || _destinationController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor, selecione um ponto de destino')),
+        const SnackBar(
+            content: Text('Por favor, selecione um ponto de destino')),
       );
       return false;
     }
-    
+
     // Validar tipo de transporte
     if (_selectedTransportIndices.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor, selecione um tipo de transporte')),
+        const SnackBar(
+            content: Text('Por favor, selecione um tipo de transporte')),
       );
       return false;
     }
-    
+
     // Validar se a rota foi calculada
     if (_routeDistanceKm == null || _routeDuration == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor, aguarde o cálculo da rota ou tente novamente')),
+        const SnackBar(
+            content: Text(
+                'Por favor, aguarde o cálculo da rota ou tente novamente')),
       );
       return false;
     }
-    
+
     return true;
   }
 
@@ -379,15 +384,16 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
     }
   }
 
-  Future<void> _selectPlace(Map<String, dynamic> prediction, bool isOrigin) async {
+  Future<void> _selectPlace(
+      Map<String, dynamic> prediction, bool isOrigin) async {
     final placeId = prediction['place_id'];
     final placeDetails = await _getPlaceDetails(placeId);
-    
+
     if (placeDetails != null) {
       final lat = placeDetails['geometry']['location']['lat'];
       final lng = placeDetails['geometry']['location']['lng'];
       final name = prediction['description'];
-      
+
       setState(() {
         if (isOrigin) {
           _originPoint = LatLng(lat, lng);
@@ -399,12 +405,12 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
           _showDestinationSuggestions = false;
         }
       });
-      
+
       _updateMarkers();
       if (_originPoint != null && _destinationPoint != null) {
         _updateRoutePolyline();
       }
-      
+
       _moveCamera(LatLng(lat, lng));
     }
   }
@@ -428,7 +434,7 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
         _isSelectingDestination = false;
       });
     }
-    
+
     _updateMarkers();
     if (_originPoint != null && _destinationPoint != null) {
       _updateRoutePolyline();
@@ -491,87 +497,86 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
   }
 
   void _updateMarkers() {
-    _markers.removeWhere((marker) => 
-      marker.markerId.value == "origin" || 
-      marker.markerId.value == "destination"
-    );
-    
+    _markers.removeWhere((marker) =>
+        marker.markerId.value == "origin" ||
+        marker.markerId.value == "destination");
+
     if (_originPoint != null) {
       _markers.add(
         Marker(
-          markerId: const MarkerId("origin"),
-          position: _originPoint!,
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-          infoWindow: InfoWindow(
-            title: _originController.text != "Localização selecionada" 
-                ? _originController.text 
-                : "Origem"
-          ),
-          zIndex: 2,
-          onTap: () {
-            if (_isSelectingOrigin) {
-              setState(() {
-                _originController.text = _originController.text != "Localização selecionada" 
-                    ? _originController.text 
-                    : "Origem";
-                _isSelectingOrigin = false;
-              });
-            } else if (_isSelectingDestination) {
-              setState(() {
-                _destinationController.text = _originController.text != "Localização selecionada" 
-                    ? _originController.text 
-                    : "Origem";
-                _destinationPoint = _originPoint;
-                _isSelectingDestination = false;
-                _updateRoutePolyline();
-              });
-            }
-          }
-        ),
+            markerId: const MarkerId("origin"),
+            position: _originPoint!,
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueOrange),
+            infoWindow: InfoWindow(
+                title: _originController.text != "Localização selecionada"
+                    ? _originController.text
+                    : "Origem"),
+            zIndex: 2,
+            onTap: () {
+              if (_isSelectingOrigin) {
+                setState(() {
+                  _originController.text =
+                      _originController.text != "Localização selecionada"
+                          ? _originController.text
+                          : "Origem";
+                  _isSelectingOrigin = false;
+                });
+              } else if (_isSelectingDestination) {
+                setState(() {
+                  _destinationController.text =
+                      _originController.text != "Localização selecionada"
+                          ? _originController.text
+                          : "Origem";
+                  _destinationPoint = _originPoint;
+                  _isSelectingDestination = false;
+                  _updateRoutePolyline();
+                });
+              }
+            }),
       );
     }
-    
+
     if (_destinationPoint != null) {
       _markers.add(
         Marker(
-          markerId: const MarkerId("destination"),
-          position: _destinationPoint!,
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-          infoWindow: InfoWindow(
-            title: _destinationController.text != "Localização selecionada" 
-                ? _destinationController.text 
-                : "Destino"
-          ),
-          zIndex: 2,
-          onTap: () {
-            if (_isSelectingOrigin) {
-              setState(() {
-                _originController.text = _destinationController.text != "Localização selecionada" 
-                    ? _destinationController.text 
-                    : "Destino";
-                _originPoint = _destinationPoint;
-                _isSelectingOrigin = false;
-                _updateRoutePolyline();
-              });
-            } else if (_isSelectingDestination) {
-              setState(() {
-                _destinationController.text = _destinationController.text != "Localização selecionada" 
-                    ? _destinationController.text 
-                    : "Destino";
-                _isSelectingDestination = false;
-              });
-            }
-          }
-        ),
+            markerId: const MarkerId("destination"),
+            position: _destinationPoint!,
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueAzure),
+            infoWindow: InfoWindow(
+                title: _destinationController.text != "Localização selecionada"
+                    ? _destinationController.text
+                    : "Destino"),
+            zIndex: 2,
+            onTap: () {
+              if (_isSelectingOrigin) {
+                setState(() {
+                  _originController.text =
+                      _destinationController.text != "Localização selecionada"
+                          ? _destinationController.text
+                          : "Destino";
+                  _originPoint = _destinationPoint;
+                  _isSelectingOrigin = false;
+                  _updateRoutePolyline();
+                });
+              } else if (_isSelectingDestination) {
+                setState(() {
+                  _destinationController.text =
+                      _destinationController.text != "Localização selecionada"
+                          ? _destinationController.text
+                          : "Destino";
+                  _isSelectingDestination = false;
+                });
+              }
+            }),
       );
     }
-    
+
     setState(() {});
   }
 
-  void _handleMarkerTap(String markerId) {
-    
-  }
+  void _handleMarkerTap(String markerId) {}
 
   void _handleMapTap(LatLng point) {
     if (_isSelectingOrigin) {
@@ -600,17 +605,20 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
   Future<void> _addPlacesOfInterestMarkers() async {
     try {
       const apiKey = 'AIzaSyCNlTXTSlKc2cCyGbWKqKCIkRN4JMiY1tQ';
-      
+
       // Pegue o centro da visualização atual do mapa
       final visibleRegion = await _mapController?.getVisibleRegion();
       if (visibleRegion == null) return;
-      
+
       // Calcular o centro
       final center = LatLng(
-        (visibleRegion.northeast.latitude + visibleRegion.southwest.latitude) / 2,
-        (visibleRegion.northeast.longitude + visibleRegion.southwest.longitude) / 2,
+        (visibleRegion.northeast.latitude + visibleRegion.southwest.latitude) /
+            2,
+        (visibleRegion.northeast.longitude +
+                visibleRegion.southwest.longitude) /
+            2,
       );
-      
+
       final url = Uri.https(
         'maps.googleapis.com',
         '/maps/api/place/nearbysearch/json',
@@ -622,19 +630,18 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
           'type': 'point_of_interest', // Pontos de interesse
         },
       );
-      
+
       final response = await http.get(url);
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['status'] == 'OK') {
           final results = data['results'] as List;
-          
+
           // Limpar marcadores antigos de POI
           _markers.removeWhere(
-            (marker) => marker.markerId.value.startsWith('poi_')
-          );
-          
+              (marker) => marker.markerId.value.startsWith('poi_'));
+
           // Adicionar novos marcadores
           for (var place in results) {
             final placeId = place['place_id'] as String;
@@ -642,18 +649,19 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
             final lat = place['geometry']['location']['lat'] as double;
             final lng = place['geometry']['location']['lng'] as double;
             final position = LatLng(lat, lng);
-            
+
             _markers.add(
               Marker(
                 markerId: MarkerId('poi_$placeId'),
                 position: position,
-                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                    BitmapDescriptor.hueViolet),
                 infoWindow: InfoWindow(title: name),
                 onTap: () => _handlePoiMarkerTap(name, position),
               ),
             );
           }
-          
+
           setState(() {});
         }
       }
@@ -1260,22 +1268,22 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
               SizedBox.expand(
                 child: GoogleMap(
                   onMapCreated: (GoogleMapController controller) {
-                  _mapController = controller;
-                  _mapController!.setMapStyle(_darkMapStyle);
-                  // Não precisamos mais buscar POIs aqui
-                },
-                initialCameraPosition: const CameraPosition(
-                  target: LatLng(-25.9692, 32.5732), // Maputo, Moçambique
-                  zoom: 13.0,
-                ),
-                mapType: MapType.normal,
-                myLocationEnabled: true,
-                myLocationButtonEnabled: true,
-                zoomControlsEnabled: true,
-                compassEnabled: true,
-                markers: _markers,
-                polylines: _polylines,
-                onTap: _handleMapTap,
+                    _mapController = controller;
+                    _mapController!.setMapStyle(_darkMapStyle);
+                    // Não precisamos mais buscar POIs aqui
+                  },
+                  initialCameraPosition: const CameraPosition(
+                    target: LatLng(-25.9692, 32.5732), // Maputo, Moçambique
+                    zoom: 13.0,
+                  ),
+                  mapType: MapType.normal,
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: true,
+                  zoomControlsEnabled: true,
+                  compassEnabled: true,
+                  markers: _markers,
+                  polylines: _polylines,
+                  onTap: _handleMapTap,
                 ),
               ),
 
@@ -1445,6 +1453,42 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                                       fontWeight: FontWeight.bold),
                                 ),
                                 const SizedBox(height: 12),
+                                // Dica sobre escolha de transporte
+                                if (_routeDistanceKm != null)
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                          color: Colors.blue.withOpacity(0.5)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Symbols.info,
+                                          color: Colors.blue,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            _routeDistanceKm! <= 5.0
+                                                ? 'Para esta distância curta, recomendamos Motorizada para entrega mais rápida.'
+                                                : _routeDistanceKm! >= 10.0
+                                                    ? 'Para esta distância longa, recomendamos Carro para maior segurança.'
+                                                    : 'Para esta distância média, ambos os tipos de transporte são adequados.',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
                                 SizedBox(
                                   height: 160,
                                   child: ListView.separated(
@@ -1456,6 +1500,19 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                                       final transport = _transports[index];
                                       final selected = _selectedTransportIndices
                                           .contains(index);
+
+                                      // Verificar se este transporte é recomendado para a distância
+                                      bool isRecommended = false;
+                                      if (_routeDistanceKm != null) {
+                                        if (_routeDistanceKm! <= 5.0 &&
+                                            transport['name'] == 'Motorizada') {
+                                          isRecommended = true;
+                                        } else if (_routeDistanceKm! >= 10.0 &&
+                                            transport['name'] == 'Carro') {
+                                          isRecommended = true;
+                                        }
+                                      }
+
                                       return GestureDetector(
                                         onTap: () {
                                           setState(() {
@@ -1475,7 +1532,9 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                                             border: Border.all(
                                               color: selected
                                                   ? highlightColor
-                                                  : Colors.transparent,
+                                                  : isRecommended
+                                                      ? Colors.green
+                                                      : Colors.transparent,
                                               width: 2,
                                             ),
                                           ),
@@ -1495,14 +1554,60 @@ class _ClientCreateOrderPageState extends State<ClientCreateOrderPage> {
                                                 crossAxisAlignment:
                                                     CrossAxisAlignment.start,
                                                 children: [
-                                                  Text(
-                                                    transport['name'],
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 16,
-                                                    ),
+                                                  Row(
+                                                    children: [
+                                                      Text(
+                                                        transport['name'],
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 16,
+                                                        ),
+                                                      ),
+
+                                                      // Badge de recomendado
+                                                      if (_routeDistanceKm !=
+                                                              null &&
+                                                          ((transport['name'] ==
+                                                                      'Motorizada' &&
+                                                                  _routeDistanceKm! <=
+                                                                      5.0) ||
+                                                              (transport['name'] ==
+                                                                      'Carro' &&
+                                                                  _routeDistanceKm! >=
+                                                                      10.0)))
+                                                        Container(
+                                                          margin:
+                                                              const EdgeInsets
+                                                                  .only(
+                                                                  left: 8),
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
+                                                                  horizontal: 6,
+                                                                  vertical: 2),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: Colors.green,
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        10),
+                                                          ),
+                                                          child: const Text(
+                                                            'Recomendado',
+                                                            style: TextStyle(
+                                                              color:
+                                                                  Colors.black,
+                                                              fontSize: 10,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                    ],
                                                   ),
                                                   const SizedBox(height: 4),
                                                   Text(

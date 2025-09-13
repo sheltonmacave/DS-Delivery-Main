@@ -7,6 +7,8 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/order_model.dart';
 import '../../services/order_service.dart';
 import 'package:ds_delivery/wrappers/back_handler.dart';
@@ -376,176 +378,10 @@ class _ClientOrderSummaryPageState extends State<ClientOrderSummaryPage> {
 
           // Informações do entregador
           if (order.driverId != null) ...[
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Informações do Entregador',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: highlightColor.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Center(
-                          child: Icon(
-                            Symbols.person,
-                            color: Colors.white,
-                            size: 30,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Entregador', // You'd typically show the driver's name here
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Contato não disponível', // And their contact info here
-                              style: TextStyle(color: Colors.white70),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+            _buildDeliveryInfo(order),
             const SizedBox(height: 24),
           ],
 
-          // Avaliação - only show for delivered orders
-          if (order.status == OrderStatus.delivered)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Avaliar Entrega',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Como você avalia esta entrega?',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(5, (index) {
-                      return IconButton(
-                        icon: Icon(
-                          index < _rating ? Symbols.star : Symbols.star_border,
-                          color: Colors.amber,
-                          size: 32,
-                        ),
-                        onPressed: () => _setRating(index + 1),
-                      );
-                    }),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    decoration: InputDecoration(
-                      hintText: 'Comentário (opcional)',
-                      hintStyle: const TextStyle(color: Colors.white54),
-                      filled: true,
-                      fillColor: Colors.black12,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Colors.white24),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Colors.white24),
-                      ),
-                    ),
-                    style: const TextStyle(color: Colors.white),
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () {
-                        if (_rating > 0) {
-                          // Submit rating logic would go here
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  'Avaliação de $_rating estrelas enviada com sucesso!'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content:
-                                  Text('Por favor, selecione uma avaliação'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: highlightColor,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: const Text('Enviar Avaliação'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          const SizedBox(height: 24),
-
-          // Botão para fechar
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () => context.go('/cliente/client_history'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.grey.shade800,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-              child: const Text('Voltar para Histórico'),
-            ),
-          ),
         ],
       ),
     );
@@ -593,7 +429,9 @@ class _ClientOrderSummaryPageState extends State<ClientOrderSummaryPage> {
           polylines: _polylines,
           mapType: MapType.normal,
           myLocationEnabled: false,
-          zoomControlsEnabled: false,
+          zoomControlsEnabled: true,
+          zoomGesturesEnabled: true,
+          scrollGesturesEnabled: true,
           mapToolbarEnabled: false,
           compassEnabled: false,
           onMapCreated: (GoogleMapController controller) {
@@ -811,6 +649,165 @@ class _ClientOrderSummaryPageState extends State<ClientOrderSummaryPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDeliveryInfo(Order order) {
+    return FutureBuilder<firestore.DocumentSnapshot>(
+      future: firestore.FirebaseFirestore.instance
+          .collection('users')
+          .doc(order.driverId)
+          .get(),
+      builder: (context, snapshot) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Informações do Entregador',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (!snapshot.hasData)
+                Row(
+                  children: [
+                    const CircleAvatar(
+                      radius: 30,
+                      backgroundColor: Colors.grey,
+                      child:
+                          Icon(Symbols.person, color: Colors.white54, size: 30),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: 20,
+                            width: 120,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade800,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            height: 16,
+                            width: 80,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade800,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(highlightColor),
+                      strokeWidth: 2,
+                    ),
+                  ],
+                )
+              else ...[
+                Builder(
+                  builder: (context) {
+                    final driverData =
+                        snapshot.data!.data() as Map<String, dynamic>?;
+                    final driverName = driverData?['name'] ?? 'Entregador';
+                    final driverPhone = driverData?['phone'] ?? '';
+                    final driverPhoto = driverData?['photoURL'];
+
+                    return Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 30,
+                          backgroundImage: driverPhoto != null
+                              ? NetworkImage(driverPhoto)
+                              : null,
+                          backgroundColor: Colors.grey.shade800,
+                          child: driverPhoto == null
+                              ? const Icon(Symbols.person,
+                                  color: Colors.white54, size: 30)
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                driverName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Seu entregador',
+                                style: TextStyle(
+                                    color: Colors.grey.shade300, fontSize: 13),
+                              ),
+                              const SizedBox(height: 4),
+                              if (driverPhone.isNotEmpty)
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      icon: Icon(Symbols.call,
+                                          color: highlightColor, size: 20),
+                                      onPressed: () async {
+                                        final Uri phoneUri =
+                                            Uri.parse('tel:$driverPhone');
+                                        try {
+                                          await launchUrl(phoneUri);
+                                        } catch (e) {
+                                          print('Erro ao fazer chamada: $e');
+                                        }
+                                      },
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      icon: Icon(Symbols.sms,
+                                          color: highlightColor, size: 20),
+                                      onPressed: () async {
+                                        final Uri smsUri =
+                                            Uri.parse('sms:$driverPhone');
+                                        try {
+                                          await launchUrl(smsUri);
+                                        } catch (e) {
+                                          print('Erro ao enviar SMS: $e');
+                                        }
+                                      },
+                                    ),
+                                  ],
+                                )
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

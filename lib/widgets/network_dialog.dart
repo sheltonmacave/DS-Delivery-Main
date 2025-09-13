@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class NetworkRequiredDialog extends StatelessWidget {
-  const NetworkRequiredDialog({Key? key}) : super(key: key);
+  const NetworkRequiredDialog({super.key});
 
   static Future<void> show(BuildContext context) {
     return showDialog(

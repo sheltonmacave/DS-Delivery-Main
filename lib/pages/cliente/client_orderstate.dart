@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:material_symbols_icons/material_symbols_icons.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -11,43 +12,46 @@ import 'dart:async';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import '../../services/notifications_service.dart';
 import '../../services/order_service.dart';
+import '../../services/order_completion_service.dart';
+import '../../utils/order_state_navigator.dart';
 import '../../models/order_model.dart' as ds_order;
 import 'package:ds_delivery/wrappers/back_handler.dart';
 
 class ClientOrderStatePage extends StatefulWidget {
   final String orderId;
-  
+
   const ClientOrderStatePage({super.key, required this.orderId});
 
   @override
   State<ClientOrderStatePage> createState() => _ClientOrderStatePageState();
 }
 
-class _ClientOrderStatePageState extends State<ClientOrderStatePage> with AutomaticKeepAliveClientMixin {
+class _ClientOrderStatePageState extends State<ClientOrderStatePage>
+    with AutomaticKeepAliveClientMixin {
   final Color highlightColor = const Color(0xFFFF6A00);
   final OrderService _orderService = OrderService();
-  
+
   // Dados do pedido
   ds_order.Order? _orderData;
   bool _isLoading = true;
   bool _hasError = false;
   String _errorMessage = '';
-  
+
   // Google Maps controlador
   GoogleMapController? _mapController;
-  
+
   // Markers e polylines
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
-  
+
   // Estado de carregamento
   bool _isLoadingRoute = false;
   bool _mapReady = false;
   bool _isFirstBuild = true;
-  
+
   // Stream subscription para atualizações de pedido
   StreamSubscription<ds_order.Order?>? _orderSubscription;
-  
+
   // Estilo do mapa escuro
   static const String _mapStyle = '''
   [
@@ -149,26 +153,34 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
     }
   ]
   ''';
-  
+
   @override
   void initState() {
     super.initState();
     _loadOrderData();
   }
-  
+
   // Carregar dados do pedido usando Future primeiro
   Future<void> _loadOrderData() async {
     try {
       final order = await _orderService.getOrderByIdOnce(widget.orderId);
-      
+
       if (mounted) {
         setState(() {
           _orderData = order;
           _isLoading = false;
-          
+
           // Se os dados foram carregados com sucesso, configurar listeners
           if (order != null) {
             _setupOrderListener();
+
+            // Verificar auto-finalização se já estiver entregue
+            if (order.status == ds_order.OrderStatus.delivered &&
+                order.autoCompletionAt != null &&
+                !order.manuallyConfirmed &&
+                !order.autoCompleted) {
+              _checkAutoCompletion(order);
+            }
           } else {
             _hasError = true;
             _errorMessage = 'Pedido não encontrado';
@@ -185,49 +197,96 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
       }
     }
   }
-  
+
   // Configurar listener para atualizações de pedido (apenas para atualizações)
   void _setupOrderListener() {
-    _orderSubscription = _orderService.getOrderById(widget.orderId).listen(
-      (updatedOrder) {
-        // Só atualizar se houver dados novos e o widget ainda estiver montado
-        if (mounted && updatedOrder != null && 
-            (_orderData == null || updatedOrder.status != _orderData!.status)) {
-          setState(() {
-            _orderData = updatedOrder;
+    _orderSubscription =
+        _orderService.getOrderById(widget.orderId).listen((updatedOrder) {
+      // Só atualizar se houver dados novos e o widget ainda estiver montado
+      if (mounted && updatedOrder != null) {
+        final bool statusChanged =
+            _orderData == null || updatedOrder.status != _orderData!.status;
+
+        setState(() {
+          _orderData = updatedOrder;
+
+          // Se o status mudou, atualizar markers
+          if (statusChanged) {
             _updateMapMarkers();
-          });
-        }
-      },
-      onError: (e) {
-        // Ignorar erros aqui, já temos os dados iniciais carregados
-        print('Erro ao receber atualização de pedido: $e');
+          }
+
+          // Verificar auto-finalização se o pedido foi marcado como entregue
+          if (updatedOrder.status == ds_order.OrderStatus.delivered &&
+              updatedOrder.autoCompletionAt != null &&
+              !updatedOrder.manuallyConfirmed &&
+              !updatedOrder.autoCompleted) {
+            _checkAutoCompletion(updatedOrder);
+          }
+        });
       }
-    );
+    }, onError: (e) {
+      // Ignorar erros aqui, já temos os dados iniciais carregados
+      print('Erro ao receber atualização de pedido: $e');
+    });
   }
-  
+
+  // Verificar se o pedido foi auto-finalizado após 5 minutos
+  void _checkAutoCompletion(ds_order.Order order) {
+    if (order.autoCompletionAt == null) {
+      print(
+          'Debug - Pedido ${order.id} não tem tempo de auto-finalização definido');
+      return;
+    }
+
+    try {
+      final autoCompletionTime = DateTime.parse(order.autoCompletionAt!);
+      final now = DateTime.now();
+
+      print('Debug - Verificando auto-finalização do pedido ${order.id}');
+      print('Debug - Tempo atual: ${now.toIso8601String()}');
+      print(
+          'Debug - Tempo para auto-finalização: ${autoCompletionTime.toIso8601String()}');
+      print('Debug - Já foi auto-finalizado? ${order.autoCompleted}');
+
+      if (now.isAfter(autoCompletionTime) && !order.autoCompleted) {
+        print('Debug - Pedido ${order.id} será auto-finalizado agora');
+
+        // O pedido foi auto-finalizado - usar o navegador de estados para
+        // garantir uma navegação consistente
+        OrderStateNavigator.navigateClientBasedOnStatus(context, order,
+            autoFinalized: true);
+
+        // Atualizar o pedido para marcar como auto-finalizado
+        final completionService = OrderCompletionService();
+        completionService.autoCompleteOrder(order.id!);
+      }
+    } catch (e) {
+      print('Erro ao verificar auto-finalização: $e');
+    }
+  }
+
   @override
   void dispose() {
     _orderSubscription?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
-  
+
   // Atualiza os marcadores e a rota no mapa quando houver atualização do pedido
   void _updateMapMarkers() {
     if (_orderData == null || !_mapReady || _mapController == null) return;
-    
+
     try {
       final originLocation = LatLng(
         _orderData!.originLocation.latitude,
         _orderData!.originLocation.longitude,
       );
-      
+
       final destinationLocation = LatLng(
         _orderData!.destinationLocation.latitude,
         _orderData!.destinationLocation.longitude,
       );
-      
+
       // Definir posição do entregador com base no status
       LatLng driverPosition;
       switch (_orderData!.status) {
@@ -240,8 +299,11 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
         case ds_order.OrderStatus.inTransit:
           // Em uma posição intermediária entre origem e destino (60% do caminho)
           driverPosition = LatLng(
-            originLocation.latitude + (destinationLocation.latitude - originLocation.latitude) * 0.6,
-            originLocation.longitude + (destinationLocation.longitude - originLocation.longitude) * 0.6,
+            originLocation.latitude +
+                (destinationLocation.latitude - originLocation.latitude) * 0.6,
+            originLocation.longitude +
+                (destinationLocation.longitude - originLocation.longitude) *
+                    0.6,
           );
           break;
         case ds_order.OrderStatus.delivered:
@@ -250,7 +312,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
         default:
           driverPosition = originLocation;
       }
-      
+
       // Atualizar marcadores sem re-renderizar o mapa inteiro
       _markers.clear();
       _markers.add(Marker(
@@ -259,27 +321,28 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
         infoWindow: const InfoWindow(title: "Origem"),
       ));
-      
+
       _markers.add(Marker(
         markerId: const MarkerId('destination'),
         position: destinationLocation,
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
         infoWindow: const InfoWindow(title: "Destino"),
       ));
-      
+
       // Adicionar marcador do entregador se houver um atribuído e pedido estiver ativo
-      if (_orderData!.driverId != null && 
-          _orderData!.status != ds_order.OrderStatus.delivered && 
+      if (_orderData!.driverId != null &&
+          _orderData!.status != ds_order.OrderStatus.delivered &&
           _orderData!.status != ds_order.OrderStatus.cancelled) {
         _markers.add(Marker(
           markerId: const MarkerId('driver'),
           position: driverPosition,
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
           infoWindow: const InfoWindow(title: "Entregador"),
           zIndex: 2,
         ));
       }
-      
+
       // Se for a primeira construção, buscar a rota
       if (_isFirstBuild) {
         _fetchRoutePoints(originLocation, destinationLocation);
@@ -289,15 +352,15 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
       print('Erro ao atualizar marcadores: $e');
     }
   }
-  
+
   // Busca pontos de rota da API do Google Directions
   Future<void> _fetchRoutePoints(LatLng origin, LatLng destination) async {
     if (!mounted) return;
-    
+
     setState(() {
       _isLoadingRoute = true;
     });
-    
+
     try {
       const apiKey = 'AIzaSyCNlTXTSlKc2cCyGbWKqKCIkRN4JMiY1tQ';
       final url = Uri.https(
@@ -309,21 +372,21 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
           'key': apiKey,
         },
       );
-      
+
       final response = await http.get(url);
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        
+
         if (data['status'] == 'OK') {
           final points = data['routes'][0]['overview_polyline']['points'];
           final polylinePoints = PolylinePoints().decodePolyline(points);
-          
+
           if (polylinePoints.isNotEmpty) {
             final polylineCoordinates = polylinePoints
                 .map((point) => LatLng(point.latitude, point.longitude))
                 .toList();
-            
+
             if (mounted) {
               setState(() {
                 _polylines.clear();
@@ -338,7 +401,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                 );
                 _isLoadingRoute = false;
               });
-              
+
               // Ajustar zoom para mostrar a rota
               _fitBoundsWithPadding(polylineCoordinates);
             }
@@ -356,11 +419,11 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
       _createStraightLine(origin, destination);
     }
   }
-  
+
   // Cria uma linha reta quando falha ao buscar rota
   void _createStraightLine(LatLng origin, LatLng destination) {
     if (!mounted) return;
-    
+
     setState(() {
       _polylines.clear();
       _polylines.add(
@@ -373,75 +436,162 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
       );
       _isLoadingRoute = false;
     });
-    
+
     _fitBoundsWithPadding([origin, destination]);
   }
-  
+
   // Ajusta a câmera para mostrar todos os pontos
   Future<void> _fitBoundsWithPadding(List<LatLng> points) async {
     if (_mapController == null || points.isEmpty) return;
-    
+
     try {
       double minLat = points.first.latitude;
       double maxLat = points.first.latitude;
       double minLng = points.first.longitude;
       double maxLng = points.first.longitude;
-      
+
       for (var point in points) {
         minLat = minLat < point.latitude ? minLat : point.latitude;
         maxLat = maxLat > point.latitude ? maxLat : point.latitude;
         minLng = minLng < point.longitude ? minLng : point.longitude;
         maxLng = maxLng > point.longitude ? maxLng : point.longitude;
       }
-      
+
       // Adicionar uma pequena margem para melhor visualização
       const double padding = 0.02;
       final LatLngBounds bounds = LatLngBounds(
         southwest: LatLng(minLat - padding, minLng - padding),
         northeast: LatLng(maxLat + padding, maxLng + padding),
       );
-      
-      await _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 50));
+
+      await _mapController!
+          .animateCamera(CameraUpdate.newLatLngBounds(bounds, 50));
     } catch (e) {
       print('Erro ao ajustar limites do mapa: $e');
     }
   }
-  
+
+  // Diálogo para confirmar saída quando o pedido está ativo
+  void _showLeaveConfirmationDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.black.withOpacity(0.9),
+        title: const Text(
+          'Sair do Acompanhamento?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Este pedido ainda está ativo. Se sair agora, você ainda poderá retornar ao acompanhamento depois.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Ficar', style: TextStyle(color: Colors.white)),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              context.go('/cliente/client_home');
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6A00),
+            ),
+            child: const Text('Sair'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Construir a AppBar com o botão de navegação
+  AppBar _buildAppBar() {
+    final bool isCompleted = _orderData != null &&
+        (_orderData!.status == ds_order.OrderStatus.delivered ||
+            _orderData!.status == ds_order.OrderStatus.cancelled);
+
+    return AppBar(
+      backgroundColor: Colors.black.withOpacity(0.6),
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Symbols.arrow_back, color: Colors.white),
+        onPressed: () {
+          // Mostrar diálogo de confirmação se o pedido estiver ativo
+          if (_orderData != null && !isCompleted) {
+            _showLeaveConfirmationDialog(context);
+          } else {
+            // Navegar diretamente se o pedido estiver concluído ou cancelado
+            context.go('/cliente/client_home');
+          }
+        },
+      ),
+      title: const Text(
+        'Estado do Pedido',
+        style: TextStyle(
+          color: Colors.white,
+          fontFamily: 'SpaceGrotesk',
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      actions: [
+        // Status indicator badge
+        if (_orderData != null && !isCompleted)
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: _orderData!.status == ds_order.OrderStatus.pending
+                  ? Color(0xFFFF6A00)
+                  : _orderData!.status == ds_order.OrderStatus.driverAssigned
+                      ? Colors.blue
+                      : _orderData!.status == ds_order.OrderStatus.pickedUp
+                          ? Color(0xFFFF6A00)
+                          : _orderData!.status == ds_order.OrderStatus.inTransit
+                              ? Colors.green
+                              : _orderData!.status ==
+                                      ds_order.OrderStatus.delivered
+                                  ? Color(0xFFFF6A00)
+                                  : Colors.grey,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text(
+              'Ativo',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
+          ),
+
+        // Botão de suporte
+        IconButton(
+          icon: Icon(Symbols.support_agent, color: highlightColor),
+          onPressed: () => context.go('/cliente/client_support',
+              extra: {'orderId': widget.orderId}),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    
+
     return BackHandler(
-    alternativeRoute: '/cliente/client_home',
-    child: Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.6),
-        elevation: 0,
-        title: const Text(
-          'Estado do Pedido',
-          style: TextStyle(
-            color: Colors.white,
-            fontFamily: 'SpaceGrotesk',
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Symbols.support_agent, color: highlightColor),
-            onPressed: () => context.go('/cliente/client_support', extra: {'orderId': widget.orderId}),
-          )
-        ],
-      ),
-      body: _isLoading 
-        ? _buildLoadingView()
-        : _hasError 
-          ? _buildErrorView()
-          : _buildMainContent(),
-    )
-    );
+        alternativeRoute: '/cliente/client_home',
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0F0F0F),
+          appBar: _buildAppBar(),
+          body: _isLoading
+              ? _buildLoadingView()
+              : _hasError
+                  ? _buildErrorView()
+                  : _buildMainContent(),
+        ));
   }
-  
+
   Widget _buildLoadingView() {
     return Center(
       child: Column(
@@ -459,7 +609,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
       ),
     );
   }
-  
+
   Widget _buildErrorView() {
     return Center(
       child: Padding(
@@ -494,7 +644,8 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
               },
               style: FilledButton.styleFrom(
                 backgroundColor: highlightColor,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
               child: const Text('Tentar Novamente'),
             ),
@@ -503,22 +654,24 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
       ),
     );
   }
-  
+
   Widget _buildMainContent() {
     if (_orderData == null) {
-      return const Center(child: Text('Pedido não disponível', style: TextStyle(color: Colors.white)));
+      return const Center(
+          child: Text('Pedido não disponível',
+              style: TextStyle(color: Colors.white)));
     }
-    
+
     final originLocation = LatLng(
       _orderData!.originLocation.latitude,
       _orderData!.originLocation.longitude,
     );
-    
+
     final destinationLocation = LatLng(
       _orderData!.destinationLocation.latitude,
       _orderData!.destinationLocation.longitude,
     );
-    
+
     return Stack(
       children: [
         // Mapa em cache para evitar reconstruções
@@ -529,7 +682,8 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
               initialCameraPosition: CameraPosition(
                 target: LatLng(
                   (originLocation.latitude + destinationLocation.latitude) / 2,
-                  (originLocation.longitude + destinationLocation.longitude) / 2,
+                  (originLocation.longitude + destinationLocation.longitude) /
+                      2,
                 ),
                 zoom: 13,
               ),
@@ -550,7 +704,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
             ),
           ),
         ),
-        
+
         // Indicador de carregamento da rota
         if (_isLoadingRoute)
           Positioned(
@@ -559,7 +713,8 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
             right: 0,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(20),
@@ -572,7 +727,8 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                       height: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(highlightColor),
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(highlightColor),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -585,7 +741,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
               ),
             ),
           ),
-        
+
         // Bottom Sheet com os detalhes do pedido
         DraggableScrollableSheet(
           initialChildSize: 0.6,
@@ -594,7 +750,8 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
           builder: (context, scrollController) => Container(
             decoration: BoxDecoration(
               color: const Color(0xFF1A1A1A),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(24)),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.2),
@@ -620,10 +777,11 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                 ),
                 _buildProgressTimeline(_orderData!),
                 const SizedBox(height: 24),
-                if (_orderData!.driverId != null) _buildDeliveryInfo(_orderData!),
+                if (_orderData!.driverId != null)
+                  _buildDeliveryInfo(_orderData!),
                 const SizedBox(height: 24),
                 _buildOrderDetails(context, _orderData!),
-                
+
                 // Botões de ação baseados no status
                 _buildActionButtons(_orderData!),
               ],
@@ -662,7 +820,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                   child: Text(
                     'Aguardando entregador aceitar o pedido...',
                     style: TextStyle(
-                      color: Colors.white, 
+                      color: Colors.white,
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                     ),
@@ -694,7 +852,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
         ),
       );
     }
-  
+
     // Lista de estados possíveis para exibição
     final List<Map<String, dynamic>> etapas = [
       {
@@ -722,14 +880,14 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
         final etapa = entry.value;
         final ds_order.OrderStatus status = etapa['status'];
         final String title = etapa['title'];
-        
+
         // Verificar se esta etapa já foi concluída
         final updates = order.statusUpdates
             .where((update) => update.status == status)
             .toList();
-        
+
         final bool hasUpdate = updates.isNotEmpty;
-        final String timeString = hasUpdate 
+        final String timeString = hasUpdate
             ? DateFormat('HH:mm:ss').format(updates.first.timestamp)
             : '--:--:--';
 
@@ -738,16 +896,15 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
           children: [
             Column(
               children: [
-                Icon(
-                  hasUpdate ? Symbols.check_circle : Symbols.circle,
-                  color: hasUpdate ? highlightColor : Colors.grey,
-                  size: 16
-                ),
+                Icon(hasUpdate ? Symbols.check_circle : Symbols.circle,
+                    color: hasUpdate ? highlightColor : Colors.grey, size: 16),
                 if (index != etapas.length - 1)
                   Container(
                     width: 2,
                     height: 40,
-                    color: hasUpdate ? highlightColor : Colors.grey.withOpacity(0.3),
+                    color: hasUpdate
+                        ? highlightColor
+                        : Colors.grey.withOpacity(0.3),
                   ),
               ],
             ),
@@ -836,12 +993,12 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
             ),
           );
         }
-        
+
         final driverData = snapshot.data!.data() as Map<String, dynamic>?;
         final driverName = driverData?['name'] ?? 'Entregador';
         final driverPhone = driverData?['phone'] ?? '';
         final driverPhoto = driverData?['photoURL'];
-        
+
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -852,11 +1009,13 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
             children: [
               CircleAvatar(
                 radius: 30,
-                backgroundImage: driverPhoto != null 
-                    ? NetworkImage(driverPhoto)
-                    : null,
+                backgroundImage:
+                    driverPhoto != null ? NetworkImage(driverPhoto) : null,
                 backgroundColor: Colors.grey.shade800,
-                child: driverPhoto == null ? const Icon(Symbols.person, color: Colors.white54, size: 40) : null,
+                child: driverPhoto == null
+                    ? const Icon(Symbols.person,
+                        color: Colors.white54, size: 40)
+                    : null,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -864,7 +1023,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      driverName, 
+                      driverName,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
@@ -874,7 +1033,8 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                     const SizedBox(height: 4),
                     Text(
                       'Seu entregador',
-                      style: TextStyle(color: Colors.grey.shade300, fontSize: 13),
+                      style:
+                          TextStyle(color: Colors.grey.shade300, fontSize: 13),
                     ),
                     const SizedBox(height: 4),
                     if (driverPhone.isNotEmpty)
@@ -883,7 +1043,8 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                           IconButton(
                             icon: Icon(Symbols.call, color: highlightColor),
                             onPressed: () async {
-                              final Uri phoneUri = Uri.parse('tel:$driverPhone');
+                              final Uri phoneUri =
+                                  Uri.parse('tel:$driverPhone');
                               try {
                                 await launchUrl(phoneUri);
                               } catch (e) {
@@ -908,7 +1069,8 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: highlightColor.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
@@ -919,7 +1081,8 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                     const SizedBox(width: 4),
                     Text(
                       '4.8',
-                      style: TextStyle(color: highlightColor, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          color: highlightColor, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -932,9 +1095,8 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
   }
 
   Widget _buildOrderDetails(BuildContext context, ds_order.Order order) {
-    final createdAt = DateFormat('dd/MM/yyyy às HH:mm')
-        .format(order.createdAt);
-    
+    final createdAt = DateFormat('dd/MM/yyyy às HH:mm').format(order.createdAt);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -945,12 +1107,20 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _DetailRow(icon: Symbols.timer, text: 'Duração: ${order.estimatedTime}'),
-          _DetailRow(icon: Symbols.confirmation_number, text: 'ID: #${order.id!.substring(0, 4)}'),
+          _DetailRow(
+              icon: Symbols.timer, text: 'Duração: ${order.estimatedTime}'),
+          _DetailRow(
+              icon: Symbols.confirmation_number,
+              text: 'ID: #${order.id!.substring(0, 4)}'),
           _DetailRow(icon: Symbols.calendar_today, text: 'Data: $createdAt'),
-          _DetailRow(icon: Symbols.location_on, text: 'Origem: ${order.originAddress}'),
-          _DetailRow(icon: Symbols.flag, text: 'Destino: ${order.destinationAddress}'),
-          _DetailRow(icon: Symbols.local_shipping, text: 'Transporte: ${order.transportType}'),
+          _DetailRow(
+              icon: Symbols.location_on,
+              text: 'Origem: ${order.originAddress}'),
+          _DetailRow(
+              icon: Symbols.flag, text: 'Destino: ${order.destinationAddress}'),
+          _DetailRow(
+              icon: Symbols.local_shipping,
+              text: 'Transporte: ${order.transportType}'),
           _DetailRow(
             icon: Symbols.straighten,
             text: 'Distância: ${order.distance.toStringAsFixed(1)} km',
@@ -959,7 +1129,6 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
             icon: Symbols.attach_money,
             text: 'Valor: ${order.price.toStringAsFixed(0)} MT',
           ),
-          
           if (order.observations != null && order.observations!.isNotEmpty) ...[
             const SizedBox(height: 16),
             Container(
@@ -999,7 +1168,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
       ),
     );
   }
-  
+
   // Botões de ação dinâmicos baseados no status
   Widget _buildActionButtons(ds_order.Order order) {
     // Botões para pedido entregue
@@ -1018,7 +1187,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
               const Icon(Symbols.check_circle, color: Colors.green, size: 48),
               const SizedBox(height: 8),
               const Text(
-                'Pedido finalizado!',
+                'Pedido entregue!',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -1026,19 +1195,44 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Obrigado por utilizar nossos serviços.',
+              Text(
+                order.manuallyConfirmed
+                    ? 'Obrigado por utilizar nossos serviços.'
+                    : 'Por favor, confirme o recebimento do seu pedido.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70),
+                style: const TextStyle(color: Colors.white70),
               ),
               const SizedBox(height: 16),
+
+              // Botão para finalizar o pedido (ir para o resumo)
+              if (!order.manuallyConfirmed)
+                FilledButton.icon(
+                  onPressed: () {
+                    context.go('/cliente/client_ordersummary',
+                        extra: {'orderId': order.id});
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: highlightColor,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 16, horizontal: 24),
+                  ),
+                  icon: const Icon(Symbols.check_circle),
+                  label: const Text('Finalizar Pedido'),
+                ),
+
+              const SizedBox(height: 12),
+
+              // Botão para voltar ao início
               FilledButton.icon(
                 onPressed: () {
-                  // Navegar para tela de avaliação ou home
                   context.go('/cliente/client_home');
                 },
                 style: FilledButton.styleFrom(
-                  backgroundColor: Colors.green,
+                  backgroundColor: order.manuallyConfirmed
+                      ? Colors.green
+                      : Colors.grey.shade800,
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
                 ),
                 icon: const Icon(Symbols.home),
                 label: const Text('Voltar ao início'),
@@ -1048,7 +1242,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
         ),
       );
     }
-    
+
     // Botão de confirmação para pedido que chegou mas não foi marcado como entregue
     if (order.status == ds_order.OrderStatus.inTransit) {
       return Padding(
@@ -1063,18 +1257,50 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                 message: 'Confirma que recebeu a sua encomenda?',
                 confirmAction: () async {
                   try {
-                    await _orderService.confirmDelivery(order.id!);
-                    
+                    // Usar serviço especializado para confirmação
+                    final auth = FirebaseAuth.instance;
+                    final completionService = OrderCompletionService();
+                    await completionService.confirmDeliveryByClient(
+                        order.id!, auth.currentUser!.uid);
+
                     showLocalNotification(
                       title: 'Pedido Finalizado',
-                      body: 'Obrigado por usar o nosso serviço! Avalie a sua experiência.',
+                      body:
+                          'Obrigado por usar o nosso serviço! Avalie a sua experiência.',
                     );
+
+                    // Navegar para a página de resumo
+                    if (mounted) {
+                      context.go('/cliente/client_ordersummary',
+                          extra: {'orderId': order.id});
+                    }
                   } catch (e) {
                     if (mounted) {
+                      // Extrair mensagem de erro mais legível
+                      String errorMessage = e.toString();
+                      if (errorMessage.contains(']')) {
+                        errorMessage = errorMessage.split(']').last.trim();
+                      }
+                      if (errorMessage.contains('Exception:')) {
+                        errorMessage =
+                            errorMessage.split('Exception:').last.trim();
+                      }
+
+                      // Mostrar mensagem de erro
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Erro ao confirmar recebimento: $e'),
+                          content: Text(
+                              'Erro ao confirmar recebimento: $errorMessage'),
                           backgroundColor: Colors.red,
+                          duration: const Duration(seconds: 5),
+                          action: SnackBarAction(
+                            label: 'OK',
+                            textColor: Colors.white,
+                            onPressed: () {
+                              ScaffoldMessenger.of(context)
+                                  .hideCurrentSnackBar();
+                            },
+                          ),
                         ),
                       );
                     }
@@ -1094,7 +1320,8 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                 children: [
                   Icon(Symbols.check_circle, color: Colors.white),
                   SizedBox(width: 8),
-                  Text('Confirmar Recebimento', style: TextStyle(color: Colors.white)),
+                  Text('Confirmar Recebimento',
+                      style: TextStyle(color: Colors.white)),
                 ],
               ),
             ),
@@ -1102,9 +1329,9 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
         ),
       );
     }
-    
+
     // Botão de cancelamento (se não estiver finalizado ou cancelado e ainda não tiver sido coletado)
-    if (order.status != ds_order.OrderStatus.delivered && 
+    if (order.status != ds_order.OrderStatus.delivered &&
         order.status != ds_order.OrderStatus.cancelled &&
         order.status != ds_order.OrderStatus.inTransit) {
       return Padding(
@@ -1158,7 +1385,7 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
         ),
       );
     }
-    
+
     // Status cancelado
     if (order.status == ds_order.OrderStatus.cancelled) {
       return Padding(
@@ -1198,12 +1425,16 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
         ),
       );
     }
-    
+
     // Estado padrão - em trânsito, sem botões específicos
     return const SizedBox.shrink();
   }
 
-    void _showConfirmationDialog(
+  // Diálogo para auto-finalização após 5 minutos
+  // Utiliza o OrderStateNavigator para exibir diálogos de auto-finalização
+  // A função _showAutoCompletionDialog foi movida para OrderStateNavigator
+
+  void _showConfirmationDialog(
     BuildContext context, {
     required String title,
     required String message,
@@ -1235,7 +1466,9 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                 title,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                    color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 12),
               Text(
@@ -1252,7 +1485,8 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('Fechar', style: TextStyle(color: Colors.white)),
+                  child: const Text('Fechar',
+                      style: TextStyle(color: Colors.white)),
                 )
               else
                 Row(
@@ -1260,21 +1494,24 @@ class _ClientOrderStatePageState extends State<ClientOrderStatePage> with Automa
                   children: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('Não', style: TextStyle(color: Colors.white)),
+                      child: const Text('Não',
+                          style: TextStyle(color: Colors.white)),
                     ),
                     FilledButton(
-                      onPressed: confirmAction == null 
-                        ? null  // Desabilitar se não houver ação
-                        : () {
-                          Navigator.pop(context); // Fechar diálogo
-                          Future.microtask(() => confirmAction()); // Executar ação após fechar diálogo
-                        },
+                      onPressed: confirmAction == null
+                          ? null // Desabilitar se não houver ação
+                          : () {
+                              Navigator.pop(context); // Fechar diálogo
+                              Future.microtask(() =>
+                                  confirmAction()); // Executar ação após fechar diálogo
+                            },
                       style: FilledButton.styleFrom(
                         backgroundColor: isCancel ? Colors.red : highlightColor,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                       ),
-                      child: const Text('Sim', style: TextStyle(color: Colors.white)),
+                      child: const Text('Sim',
+                          style: TextStyle(color: Colors.white)),
                     ),
                   ],
                 ),

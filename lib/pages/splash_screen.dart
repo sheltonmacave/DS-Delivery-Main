@@ -13,7 +13,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   final OrderService _orderService = OrderService();
-  
+
   @override
   void initState() {
     super.initState();
@@ -24,7 +24,7 @@ class _SplashScreenState extends State<SplashScreen> {
     try {
       // Pequeno delay para permitir que a splash screen seja exibida
       await Future.delayed(const Duration(milliseconds: 500));
-      
+
       // Verificar se o usuário está logado
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
@@ -32,16 +32,15 @@ class _SplashScreenState extends State<SplashScreen> {
         context.go('/account_selection');
         return;
       }
-      
+
       // Buscar o papel do usuário das preferências
       final prefs = await SharedPreferences.getInstance();
-      final userRole = prefs.getString('userRole');
-      
+      final userRole = prefs.getString('user_role');
+
       // Se não houver pedidos ativos ou ocorrer algum erro, continuar com o fluxo normal
       if (mounted) {
         context.go('/verifica');
       }
-      
     } catch (e) {
       print('Erro ao verificar pedidos ativos: $e');
       // Em caso de erro, continuar com o fluxo normal

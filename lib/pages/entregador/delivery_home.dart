@@ -6,11 +6,11 @@ import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:video_player/video_player.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:async';
 import '../../services/order_service.dart';
 import '../../models/order_model.dart' as ds_order;
 import 'package:ds_delivery/wrappers/back_handler.dart';
+import '../../widgets/feedback_bottom_sheet.dart';
 
 class DeliveryHomePage extends StatefulWidget {
   const DeliveryHomePage({super.key});
@@ -24,11 +24,12 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
   late Timer _timer;
   bool _showGreeting = true;
   bool _showUI = true;
+  bool _showActiveOrderOverlay = true;
   int _currentIndex = 2;
   GoogleMapController? _mapController;
   final OrderService _orderService = OrderService();
   ds_order.Order? _activeOrder;
-  final bool _isLoadingOrder = true;
+  bool _isLoadingOrder = true;
 
   final Color highlightColor = const Color(0xFFFF6A00);
 
@@ -162,14 +163,14 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
 
     // Create VideoPlayerOptions that allows mixing with other audio
     final VideoPlayerOptions videoPlayerOptions = VideoPlayerOptions(
-      mixWithOthers: true, // This allows other apps to play audio simultaneously
+      mixWithOthers:
+          true, // This allows other apps to play audio simultaneously
     );
-    
+
     _videoController = VideoPlayerController.asset(
       'assets/videos/sondella.mp4',
       videoPlayerOptions: videoPlayerOptions, // Add this parameter
-    )
-      ..initialize().then((_) {
+    )..initialize().then((_) {
         setState(() {});
         _videoController.setLooping(true);
         _videoController.setVolume(0.0);
@@ -187,6 +188,22 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
         }
       });
 
+      // Iniciar a escuta para pedidos ativos do entregador
+      _orderService.getDriverActiveOrder().listen((order) {
+        if (mounted) {
+          setState(() {
+            _activeOrder = order;
+            _isLoadingOrder = false;
+          });
+        }
+      }, onError: (error) {
+        debugPrint('Erro ao buscar entrega ativa: $error');
+        if (mounted) {
+          setState(() {
+            _isLoadingOrder = false;
+          });
+        }
+      });
     });
 
     _loadCurrentPosition();
@@ -309,12 +326,18 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
       decoration: BoxDecoration(
         color: const Color(0xFF232323),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: highlightColor),
+        border: Border.all(color: highlightColor, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: highlightColor.withOpacity(0.3),
-            blurRadius: 8,
-            spreadRadius: 0,
+            color: highlightColor.withOpacity(0.4),
+            blurRadius: 15,
+            spreadRadius: 1,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.5),
+            blurRadius: 10,
+            spreadRadius: 2,
           ),
         ],
       ),
@@ -322,63 +345,106 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Cabeçalho
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              color: Colors.black26,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: highlightColor.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(statusIcon, color: highlightColor),
+          Stack(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: const BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Entrega em Andamento',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: highlightColor.withOpacity(0.2),
+                        shape: BoxShape.circle,
                       ),
-                      Text(
-                        statusText,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: highlightColor.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'ID #$displayId',
-                    style: TextStyle(
-                      color: highlightColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                      child: Icon(statusIcon, color: highlightColor),
                     ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Entrega em Andamento',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Text(
+                            statusText,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: highlightColor.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'ID #$displayId',
+                        style: TextStyle(
+                          color: highlightColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Botão para fechar o card
+              Positioned(
+                top: 4,
+                right: 4,
+                child: IconButton(
+                  icon: const Icon(Symbols.close,
+                      color: Colors.white60, size: 20),
+                  onPressed: () {
+                    // Temporariamente esconde o card
+                    setState(() {
+                      _showActiveOrderOverlay = false;
+                    });
+
+                    // Mostra um snackbar informando que o card está oculto temporariamente
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text(
+                            'Card minimizado. O pedido continua ativo.'),
+                        action: SnackBarAction(
+                          label: 'Mostrar',
+                          onPressed: () {
+                            setState(() {
+                              _showActiveOrderOverlay = true;
+                            });
+                          },
+                        ),
+                        duration: const Duration(seconds: 5),
+                      ),
+                    );
+                  },
+                  tooltip: 'Ocultar',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 30,
+                    minHeight: 30,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
 
           // Informações do pedido
@@ -473,9 +539,9 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
     final double horizontalMargin = MediaQuery.of(context).size.width * 0.05;
 
     return BackHandler(
-    isRoot: true,
-    showExitWarning: true,
-    child: Scaffold(
+        isRoot: true,
+        showExitWarning: true,
+        child: Scaffold(
           backgroundColor: const Color(0xFF0F0F0F),
           appBar: AppBar(
             backgroundColor: const Color(0xFF0F0F0F),
@@ -528,6 +594,8 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // Removido a exibição do card para ser mostrado como overlay
+
                         const Text(
                           'Vai até onde o teu cliente estiver!',
                           style: TextStyle(
@@ -542,7 +610,21 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
 
                         FilledButton(
                           onPressed: _activeOrder != null
-                              ? null // Desabilita se houver entrega ativa
+                              ? () {
+                                  // Se há uma entrega ativa, mostramos o card novamente
+                                  setState(() {
+                                    _showActiveOrderOverlay = true;
+                                  });
+
+                                  // Informamos ao usuário que não pode aceitar novas entregas
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                          'Você já tem uma entrega em andamento. Conclua-a antes de aceitar novas entregas.'),
+                                      duration: Duration(seconds: 3),
+                                    ),
+                                  );
+                                }
                               : () {
                                   context.go('/entregador/delivery_orderslist');
                                 },
@@ -576,7 +658,7 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
                           ),
                         ),
 
-                        // Mostrar card de entrega ativa se existir
+                        // Loading indicator para pedidos ativos
                         if (_isLoadingOrder)
                           Center(
                             child: Padding(
@@ -584,9 +666,7 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
                               child: CircularProgressIndicator(
                                   color: highlightColor),
                             ),
-                          )
-                        else if (_activeOrder != null)
-                          _buildActiveDeliveryCard(),
+                          ),
 
                         const SizedBox(height: 16),
                         AspectRatio(
@@ -604,13 +684,106 @@ class _DeliveryHomePageState extends State<DeliveryHomePage> {
                                   ),
                           ),
                         ),
+
+                        // Botão de feedback/sugestões
+                        const SizedBox(height: 20),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            FeedbackBottomSheet.show(context);
+                          },
+                          icon: Icon(Symbols.lightbulb, color: highlightColor),
+                          label: const Text(
+                            'Enviar Sugestão de Melhoria',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: highlightColor),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
               ),
+              // Card de entrega ativa como overlay
+              if (!_isLoadingOrder &&
+                  _activeOrder != null &&
+                  _showActiveOrderOverlay)
+                Positioned(
+                  top: 100,
+                  left: horizontalMargin,
+                  right: horizontalMargin,
+                  child: Hero(
+                    tag: 'active_delivery_${_activeOrder!.id}',
+                    child: GestureDetector(
+                      onTap: () {
+                        context.go('/entregador/delivery_orderstate',
+                            extra: {'orderId': _activeOrder!.id});
+                      },
+                      child: Material(
+                        color: Colors.transparent,
+                        elevation: 16,
+                        shadowColor: highlightColor.withOpacity(0.3),
+                        child: _buildActiveDeliveryCard(),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Loading indicator como overlay
+              if (_isLoadingOrder)
+                Positioned(
+                  top: 100,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF232323),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 8,
+                            spreadRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: const CircularProgressIndicator(strokeWidth: 2.0),
+                    ),
+                  ),
+                ),
+
+              // Botão para mostrar entrega ativa
+              if (!_isLoadingOrder &&
+                  _activeOrder != null &&
+                  !_showActiveOrderOverlay)
+                Positioned(
+                  right: horizontalMargin,
+                  bottom: 140, // Reposicionado acima da navbar
+                  child: FloatingActionButton(
+                    mini: true,
+                    backgroundColor: highlightColor,
+                    onPressed: () {
+                      setState(() {
+                        _showActiveOrderOverlay = true;
+                      });
+                    },
+                    child:
+                        const Icon(Symbols.local_shipping, color: Colors.white),
+                  ),
+                ),
+
               Positioned(
-                bottom: 20,
+                bottom: 30, // Aumentado para evitar overflow
                 left: horizontalMargin,
                 right: horizontalMargin,
                 child: AnimatedOpacity(

@@ -7,6 +7,16 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 import '../../models/order_model.dart';
 import '../../services/order_service.dart';
 import 'package:ds_delivery/wrappers/back_handler.dart';
@@ -155,6 +165,168 @@ class _DeliveryOrderSummaryPageState extends State<DeliveryOrderSummaryPage> {
     );
   }
 
+  Widget _buildClientInfo(Order order) {
+    return FutureBuilder<firestore.DocumentSnapshot>(
+      future: firestore.FirebaseFirestore.instance
+          .collection('users')
+          .doc(order.clientId)
+          .get(),
+      builder: (context, snapshot) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Informações do Cliente',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (!snapshot.hasData)
+                Row(
+                  children: [
+                    const CircleAvatar(
+                      radius: 30,
+                      backgroundColor: Colors.grey,
+                      child:
+                          Icon(Symbols.person, color: Colors.white54, size: 30),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: 20,
+                            width: 120,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade800,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            height: 16,
+                            width: 80,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade800,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(highlightColor),
+                      strokeWidth: 2,
+                    ),
+                  ],
+                )
+              else ...[
+                Builder(
+                  builder: (context) {
+                    final clientData =
+                        snapshot.data!.data() as Map<String, dynamic>?;
+                    final clientName =
+                        order.clientName ?? clientData?['name'] ?? 'Cliente';
+                    final clientPhone =
+                        order.clientPhone ?? clientData?['phone'] ?? '';
+                    final clientPhoto = clientData?['photoURL'];
+                    final clientRating = clientData?['rating'] ?? 5.0;
+
+                    return Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 30,
+                          backgroundImage: clientPhoto != null
+                              ? NetworkImage(clientPhoto)
+                              : null,
+                          backgroundColor: Colors.grey.shade800,
+                          child: clientPhoto == null
+                              ? const Icon(Symbols.person,
+                                  color: Colors.white54, size: 30)
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                clientName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Seu cliente',
+                                style: TextStyle(
+                                    color: Colors.grey.shade300, fontSize: 13),
+                              ),
+                              const SizedBox(height: 4),
+                            ],
+                          ),
+                        ),
+                        if (clientPhone.isNotEmpty)
+                          Row(
+                            children: [
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: Icon(Symbols.call,
+                                    color: highlightColor, size: 20),
+                                onPressed: () async {
+                                  final Uri phoneUri =
+                                      Uri.parse('tel:$clientPhone');
+                                  try {
+                                    await launchUrl(phoneUri);
+                                  } catch (e) {
+                                    print('Erro ao fazer chamada: $e');
+                                  }
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: Icon(Symbols.sms,
+                                    color: highlightColor, size: 20),
+                                onPressed: () async {
+                                  final Uri smsUri =
+                                      Uri.parse('sms:$clientPhone');
+                                  try {
+                                    await launchUrl(smsUri);
+                                  } catch (e) {
+                                    print('Erro ao enviar SMS: $e');
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildOrderSummary(Order order) {
     // Data formatada
     final createdAtFormatted =
@@ -271,105 +443,10 @@ class _DeliveryOrderSummaryPageState extends State<DeliveryOrderSummaryPage> {
           const SizedBox(height: 24),
 
           // Informações do cliente
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Informações do Cliente',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: highlightColor.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Symbols.person,
-                          color: Colors.white,
-                          size: 30,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            order.clientName ?? 'Cliente',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          if (order.clientPhone != null)
-                            Text(
-                              order.clientPhone!,
-                              style: const TextStyle(color: Colors.white70),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // Avaliação
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Avaliação da Entrega',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (index) {
-                    // Simulação de avaliação (seria dinâmica em produção)
-                    const rating = 4;
-                    return Icon(
-                      index < rating ? Symbols.star : Symbols.star_border,
-                      color: Colors.amber,
-                      size: 32,
-                    );
-                  }),
-                ),
-              ],
-            ),
-          ),
+          ...[
+            _buildClientInfo(order),
+            const SizedBox(height: 24),
+          ],
         ],
       ),
     );
@@ -420,7 +497,9 @@ class _DeliveryOrderSummaryPageState extends State<DeliveryOrderSummaryPage> {
             polylines: _polylines,
             mapType: MapType.normal,
             myLocationEnabled: false,
-            zoomControlsEnabled: false,
+            zoomControlsEnabled: true,
+            zoomGesturesEnabled: true,
+            scrollGesturesEnabled: true,
             mapToolbarEnabled: false,
             compassEnabled: false,
             onMapCreated: (GoogleMapController controller) {

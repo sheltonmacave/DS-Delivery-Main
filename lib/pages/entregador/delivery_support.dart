@@ -7,7 +7,7 @@ import 'package:ds_delivery/wrappers/back_handler.dart';
 class DeliverySupportPage extends StatelessWidget {
   final Color highlightColor = const Color(0xFFFF6A00);
   final Map<String, dynamic>? extra;
-  
+
   // Modificado para receber um mapa de extras em vez de apenas orderId
   const DeliverySupportPage({super.key, this.extra});
 
@@ -15,95 +15,86 @@ class DeliverySupportPage extends StatelessWidget {
   Widget build(BuildContext context) {
     // Extrair o orderId do mapa de extras
     final String? orderId = extra != null ? extra!['orderId'] as String? : null;
-    
+
     return BackHandler(
-    alternativeRoute: '/entregador/delivery_orderstate',
-    child: Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      body: Column(
-        children: [
-          SafeArea(
-            child: AppBar(
-              backgroundColor: Colors.black.withOpacity(0.6),
-              elevation: 0,
-              leading: IconButton(
-                icon: const Icon(Symbols.arrow_back, color: Colors.white),
-                onPressed: () {
-                  // Corrigi a navegação de volta para o estado do pedido
-                  if (orderId != null) {
-                    // Corrigido: Passando orderId diretamente como required param
-                    context.go('/entregador/delivery_orderstate/$orderId');
-                  } else {
-                    // Se não tiver orderId, tenta fazer pop ou volta para a lista de pedidos
-                    try {
-                      context.pop();
-                    } catch (e) {
-                      context.go('/entregador/delivery_orderslist');
-                    }
-                  }
-                },
-              ),
-              title: const Text(
-                'Suporte',
-                style: TextStyle(
-                  fontFamily: 'SpaceGrotesk',
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(24),
-              children: [
-                const Text(
-                  'Contactos da Equipe',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+        alternativeRoute: '/entregador/delivery_orderstate',
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0F0F0F),
+          body: Column(
+            children: [
+              SafeArea(
+                child: AppBar(
+                  backgroundColor: Colors.black.withOpacity(0.6),
+                  elevation: 0,
+                  leading: IconButton(
+                    icon: const Icon(Symbols.arrow_back, color: Colors.white),
+                    onPressed: () {
+                      // Sempre navega para o estado do pedido se houver orderId, senão para a lista
+                      if (orderId != null) {
+                        context.go('/entregador/delivery_orderstate',
+                            extra: {'orderId': orderId});
+                      } else {
+                        context.go('/entregador/delivery_orderslist');
+                      }
+                    },
+                  ),
+                  title: const Text(
+                    'Suporte',
+                    style: TextStyle(
+                      fontFamily: 'SpaceGrotesk',
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                _buildContactSection(orderId),
-                
-                const SizedBox(height: 32),
-                
-                const SizedBox(height: 32),
-                
-                const Text(
-                  'FAQ',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(24),
+                  children: [
+                    const Text(
+                      'Contactos da Equipe',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildContactSection(orderId),
+                    const SizedBox(height: 32),
+                    const SizedBox(height: 32),
+                    const Text(
+                      'FAQ',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFaqItem(
+                      'Como recebo notificações de novos pedidos?',
+                      'Sempre que um novo pedido estiver disponível na tua zona de atuação, receberás uma notificação. Verifica também a página "Pedidos Disponíveis".',
+                    ),
+                    _buildFaqItem(
+                      'O que fazer se o cliente não atender ou estiver ausente?',
+                      'Aguarda por alguns minutos e tenta novo contacto. Se não conseguires, usa o botão "Reportar Problema" na página do pedido.',
+                    ),
+                    _buildFaqItem(
+                      'Como confirmo a entrega?',
+                      'Ao chegares ao destino, usa o botão "Confirmar Entrega" na página do pedido. O cliente poderá também confirmar no app dele.',
+                    ),
+                    _buildFaqItem(
+                      'Como posso receber meus pagamentos?',
+                      'Os pagamentos são processados semanalmente e depositados na conta bancária registrada no seu perfil. Verifique suas finanças na seção "Ganhos" do aplicativo.',
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                _buildFaqItem(
-                  'Como recebo notificações de novos pedidos?',
-                  'Sempre que um novo pedido estiver disponível na tua zona de atuação, receberás uma notificação. Verifica também a página "Pedidos Disponíveis".',
-                ),
-                _buildFaqItem(
-                  'O que fazer se o cliente não atender ou estiver ausente?',
-                  'Aguarda por alguns minutos e tenta novo contacto. Se não conseguires, usa o botão "Reportar Problema" na página do pedido.',
-                ),
-                _buildFaqItem(
-                  'Como confirmo a entrega?',
-                  'Ao chegares ao destino, usa o botão "Confirmar Entrega" na página do pedido. O cliente poderá também confirmar no app dele.',
-                ),
-                _buildFaqItem(
-                  'Como posso receber meus pagamentos?',
-                  'Os pagamentos são processados semanalmente e depositados na conta bancária registrada no seu perfil. Verifique suas finanças na seção "Ganhos" do aplicativo.',
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
-    )
-    );
+        ));
   }
 
   Widget _buildContactSection(String? orderId) {
@@ -136,7 +127,7 @@ class DeliverySupportPage extends StatelessWidget {
             final Uri emailUri = Uri(
               scheme: 'mailto',
               path: email,
-              query: orderId != null 
+              query: orderId != null
                   ? 'subject=Suporte ao Entregador - Pedido #${orderId.substring(0, 4)}'
                   : 'subject=Suporte ao Entregador',
             );
@@ -189,7 +180,8 @@ class DeliverySupportPage extends StatelessWidget {
         ),
         title: Text(
           question,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          style:
+              const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
         children: [
           Padding(

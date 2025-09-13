@@ -30,6 +30,20 @@ service cloud.firestore {
         allow read, write: if isClient() || isDriver();
       }
     }
+    
+    // DELIVERY LOGS - registro de entregas
+    match /delivery_logs/{logId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+    }
+    
+    // NOTIFICATIONS
+    match /notifications/{notificationId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && 
+                   (request.auth.uid == resource.data.clientId || 
+                    request.auth.uid == resource.data.driverId);
+    }
 
     // ADS - público
     match /ads/{adsid} {
@@ -41,6 +55,15 @@ service cloud.firestore {
     match /suporte/{suporteid} {
       allow create: if request.auth != null;
       allow read, update: if request.auth.uid == resource.data.uidID;
+    }
+    
+    // DELIVERY ISSUES - problemas com entregas
+    match /delivery_issues/{issueId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && 
+                   (request.auth.uid == resource.data.clientId || 
+                    request.auth.uid == resource.data.driverId);
+      allow update: if false; // Suporte atualiza via funções
     }
 
     // Funções auxiliares

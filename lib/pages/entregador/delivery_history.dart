@@ -707,23 +707,6 @@ class _DeliveryHistoryPageState extends State<DeliveryHistoryPage>
                                             ),
                                           ),
                                         ),
-
-                                        // Rating
-                                        Row(
-                                          children: [
-                                            Icon(Symbols.star,
-                                                color: highlightColor,
-                                                size: 18),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              '4.9',
-                                              style: TextStyle(
-                                                color: highlightColor,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
                                       ],
                                     ),
                                   ],
